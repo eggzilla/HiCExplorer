@@ -1012,6 +1012,112 @@ def main(args=None):
 
     save_domains_and_boundaries(chrom, chr_start, chr_end, matrix, min_idx, args)
 
+    ### temp_code
+
+    ## find overlap with black regions
+    import subprocess
+    bed_file = args.outPrefix + '_boundaries.bed'
+    black_count = subprocess.check_output("/usr/local/Cellar/bedtools/2.26.0/bin/intersectBed -a {} "
+                                   "-b {} | wc -l ".format(bed_file, "/Users/fidelramirez/Projects/figure_1/black.bed"),
+                                   shell=True)
+    print "Black count: {} ".format(black_count)
+
+    # check diff with neighbor mean
+    unique_chroms, chr_start_idx = np.unique(chrom, return_index=True)
+    chr_start_idx = np.concatenate([chr_start_idx, [len(chrom) - 1]])
+    chr_start_idx = np.sort(chr_start_idx)
+    chrom_ranges = [(chr_start_idx[x], chr_start_idx[x+1]) for x in range(len(chr_start_idx) - 1)]
+    window_len = 10
+    matrix_avg = matrix.mean(axis=1)
+    larger_mean_list = []
+    #import ipdb;ipdb.set_trace()
+    for start_range, end_range in chrom_ranges:
+        # translate min_idx to new range
+        new_min_idx = np.array([x for x in min_idx if start_range <= x < end_range]) - start_range
+        _avg = matrix_avg[start_range:end_range]
+        # compute avg around the min_idx
+        for _min in new_min_idx:
+            if 10 < _min <= len(_avg) - 10:
+                # get the TAD_score mean around the local minimum.
+                larger_mean = np.mean(np.concatenate([_avg[_min - window_len:_min-1],
+                                                      _avg[_min + 2: _min + window_len - 1]]))
+            else:
+                larger_mean = np.nan
+            larger_mean_list += [larger_mean]
+
+    # compute difference between larger_mean and min_idx
+    diff = np.array(larger_mean_list) - matrix_avg[min_idx]
+    with open(args.outPrefix + "_diff_{}.bed".format(window_len), 'w') as fh:
+        count = 0
+        for _min in min_idx:
+            fh.write("{}\t{}\t{}\t{}\t{}\n".format(chrom[_min], chr_start[_min], chr_end[_min], matrix_avg[_min], diff[count]))
+            count += 1
+
+
+    # compute TAD score for the TADs found
+    def get_coverage_norm_TAD(matrix, start, cut, end):
+        inter_edges = matrix[start:cut, cut:end].sum()
+        edges_left = matrix[start:cut, :][:, start:cut].sum()
+        edges_right = matrix[cut:end, :][:, cut:end].sum()
+        if sum([edges_left, edges_right]) == 0:
+            return np.nan
+
+        return float(inter_edges) / sum([edges_left, edges_right])
+
+    def get_cut_mean(matrix, start, cut, end):
+        return matrix[start:cut, cut:end].mean()
+
+    hic_ma = hm.hiCMatrix("merge_corrected.npz")
+    # remove self counts
+    hic_ma.diagflat(value=0)
+    # mask bins without any information
+    hic_ma.maskBins(hic_ma.nan_bins)
+    orig_intervals = hic_ma.cut_intervals
+
+    # extend remaining bins to remove gaps in
+    # the matrix
+    new_intervals = enlarge_bins(hic_ma.cut_intervals)
+
+    # rebuilt bin positions if necessary
+    if new_intervals != orig_intervals:
+        hic_ma.interval_trees, hic_ma.chrBinBoundaries = \
+            hic_ma.intervalListToIntervalTree(new_intervals)
+
+    TAD_score = []
+    match_min_idx = []
+
+    ##
+    binsize = hic_ma.getBinSize()
+
+    min_depth_in_bins = int(20000.0 / binsize)
+    ##
+    for start_range, end_range in chrom_ranges:
+        # translate min_idx to new range
+        new_min_idx = np.array([x for x in min_idx if start_range <= x < end_range]) - start_range
+
+        # add start and end of chromosome as boundaries
+        new_min_idx = np.concatenate([[0], new_min_idx, [end_range - start_range - 1]])
+        _matrix = hic_ma.matrix[start_range:end_range, start_range:end_range]
+        # compute TAD score
+        for idx in range(1, len(new_min_idx) - 1):
+            assert hic_ma.cut_intervals[new_min_idx[idx] + start_range][1] == chr_start[new_min_idx[idx] + start_range], "error"
+            try:
+                #TAD_score += [get_coverage_norm_TAD(_matrix, new_min_idx[idx - 1], new_min_idx[idx], new_min_idx[idx + 1])]
+                TAD_score += [get_cut_mean(_matrix, new_min_idx[idx - 1], new_min_idx[idx], new_min_idx[idx + 1]-1)]
+                #TAD_score += [get_coverage_norm(_matrix, new_min_idx[idx], min_depth_in_bins)]
+            except:
+                import ipdb;ipdb.set_trace()
+            match_min_idx += [new_min_idx[idx] + start_range]
+
+    assert len(TAD_score) == len(min_idx), "len(TAD score) != len(min_idx)"
+    assert np.mean(np.array(min_idx) - match_min_idx) == 0, "index mismatch"
+
+    with open(args.outPrefix + "_TAD_score.bed".format(window_len), 'w') as fh:
+        count = 0
+        for _min in min_idx:
+            fh.write("{}\t{}\t{}\t{}\t{}\n".format(chrom[_min], chr_start[_min], chr_end[_min], matrix_avg[_min], TAD_score[count]))
+            count += 1
+
     # turn of hierarchical clustering which is apparently not working.
     if 2==1:
         boundary_list = [(hic_ma.cut_intervals[min_][0], hic_ma.cut_intervals[min_][2], mean_mat[min_]) for min_ in min_idx]
