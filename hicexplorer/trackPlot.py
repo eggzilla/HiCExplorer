@@ -1676,14 +1676,11 @@ class PlotDendrogram(TrackPlot):
 
         # the order of the file is important and must not be sorted.
         # thus, the chromosomes are supposed to be one after the other
-        z_value = []
+        z_value = {}
         with open(self.properties['file'], 'r') as file_h:
             for line in file_h.readlines():
                 [chrom, pos_a, pos_b, clust_id, distance, strand, id_cluster_a, id_cluster_b, num_clusters] = \
                     line.strip().split('\t')
-                if chrom != chrom_region:
-                    continue
-
                 try:
                     pos_a = int(pos_a)
                     pos_b = int(pos_b)
@@ -1693,8 +1690,9 @@ class PlotDendrogram(TrackPlot):
 
                 except ValueError:
                     exit("BED values not valid")
-
-                z_value.append((id_cluster_a, id_cluster_b, distance, num_clusters, pos_a, pos_b))
+                if chrom not in z_value:
+                    z_value[chrom] = []
+                z_value[chrom].append((id_cluster_a, id_cluster_b, distance, num_clusters, pos_a, pos_b))
 
         self.boxes = self.dendrogram_calculate_info(z_value)
 
@@ -1702,7 +1700,7 @@ class PlotDendrogram(TrackPlot):
 
         min_y = 1
         max_y = 0
-        for box in self.boxes:
+        for box in self.boxes[chrom_region]:
             if box[1, :].min() < min_y:
                 min_y = box[1, :].min()
             if box[1, :].max() > max_y:
@@ -1745,8 +1743,6 @@ class PlotDendrogram(TrackPlot):
                [  0.5,   0.5,   0.5,   0.5]]), array([[  5. ,   5. ,  15. ,  15. ],
                [  0.6,   0.6,   0.6,   0.5]])]
         """
-        boxes = []
-
         def is_cluster_leaf(cluster_id):
             """
             A cluster is a leaf if the id is less than
@@ -1761,7 +1757,7 @@ class PlotDendrogram(TrackPlot):
             cluster_id - num_leafs and the
             distance is found at position 2.
             """
-            return z[cluster_id - num_leafs][2]
+            return z_values[cluster_id - num_leafs][2]
 
         # at each iteration a sort of box is drawn:
         #
@@ -1776,20 +1772,24 @@ class PlotDendrogram(TrackPlot):
         # Four points are required to define such box which
         # are obtained in the following code
 
-        num_leafs = len(z) + 1
-        for id_cluster_a, id_cluster_b, distance, num_clusters, pos_a, pos_b in z:
-            if is_cluster_leaf(id_cluster_a):
-                y_a = 0.5
-            else:
-                y_a = prev_cluster_y(id_cluster_a)
+        boxes = {}
 
-            if is_cluster_leaf(id_cluster_b):
-                y_b = 0.5
-            else:
-                y_b = prev_cluster_y(id_cluster_b)
+        for chrom, z_values in z.iteritems():
+            num_leafs = len(z_values) + 1
+            for id_cluster_a, id_cluster_b, distance, num_clusters, pos_a, pos_b in z_values:
+                if is_cluster_leaf(id_cluster_a):
+                    y_a = 0.5
+                else:
+                    y_a = prev_cluster_y(id_cluster_a)
 
-            boxes.append(np.array([[pos_a, pos_a, pos_b, pos_b],
-                                   [y_a, distance, distance, y_b]]))
+                if is_cluster_leaf(id_cluster_b):
+                    y_b = 0.5
+                else:
+                    y_b = prev_cluster_y(id_cluster_b)
+                if chrom not in boxes:
+                    boxes[chrom] = []
+                boxes[chrom].append(np.array([[pos_a, pos_a, pos_b, pos_b],
+                                    [y_a, distance, distance, y_b]]))
         return boxes
 
 
