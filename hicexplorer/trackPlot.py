@@ -1697,7 +1697,8 @@ class PlotDendrogram(TrackPlot):
         self.boxes = self.dendrogram_calculate_info(z_value)
 
     def plot(self, ax, label_ax, chrom_region, start_region, end_region):
-
+        # TODO: do not plot the whole chromosome, but only the region
+        # specified
         min_y = 1
         max_y = 0
         for box in self.boxes[chrom_region]:
@@ -1724,12 +1725,9 @@ class PlotDendrogram(TrackPlot):
             ax.set_ylim(min_y, max_y)
 
         ax.set_xlim(start_region, end_region)
-        #ax.set_frame_on(False)
-        #ax.axes.get_xaxis().set_visible(False)
-        #ax.axes.get_yaxis().set_visible(False)
 
-        label_ax.text(0.15, 0, self.properties['title'], horizontalalignment='left', size='large',
-                      verticalalignment='bottom', transform=label_ax.transAxes)
+        label_ax.text(0.15, 0.5, self.properties['title'], horizontalalignment='left', size='large',
+                      verticalalignment='center', transform=label_ax.transAxes)
 
 
     @staticmethod
