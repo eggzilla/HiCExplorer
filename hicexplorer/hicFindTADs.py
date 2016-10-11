@@ -541,24 +541,12 @@ def hierarchical_clustering(boundary_list, clusters_cutoff=[]):
     correspond to the genomic coordinates of ``z_value[i, 0]`` and ``z_value[i, 1]``
 
     """
-    # run the hierarchical clustering per chromosome
-    if clusters_cutoff:
-        # sort in reverse order
-        clusters_cutoff = np.sort(np.unique(clusters_cutoff))[::-1]
-
-    chrom, start, value = zip(*boundary_list)
-
-    unique_chr, indices = np.unique(chrom, return_index=True)
-    indices = indices[1:]  # the first element is not needed
-    start_per_chr = np.split(start, indices)
-    value_per_chr = np.split(value, indices)
-    z_value = {}
 
     def get_domain_positions(boundary_position):
         """
         returns for each boundary a start,end position
         corresponding to each TAD
-        :param boundary_position: list of boundary chromosomal positions
+        :param boundary_position: list of boundary start chromosomal positions
         :return: list of (start, end) tuples.
         """
         start_ = None
@@ -583,6 +571,32 @@ def hierarchical_clustering(boundary_list, clusters_cutoff=[]):
         for set_idx, set_of_ids in enumerate(clusters_):
             if search_id in set_of_ids:
                 return set_idx
+
+    def get_chromome_bin_ids(chrom_list):
+        """
+        Given the list of chromosome names, splits the
+        list to return the indices associated to each
+        chromosome.
+
+        :param chrom_list: list containing the chromosome names
+        :return: OrderedDictionary, each key is the chromosome name and the values
+                 are the start and end ids
+        """
+        from collections import OrderedDict
+        chrbin_boundaries = OrderedDict()
+        # get the indices where the chromosome name changes
+        chrom_list = np.array(chrom_list)
+        chr_change_indices = np.flatnonzero(chrom_list[:-1] != chrom_list[1:])
+        # append the idx -1 to the list
+        # to facilitate the creation of the dictionary
+        chr_change_indices = np.concatenate([[-1], chr_change_indices])
+
+        for _idx, index_value in enumerate(chr_change_indices[:-1]):
+            start_chr = index_value + 1
+            end_chr = chr_change_indices[_idx + 1]
+            chrbin_boundaries[chrom[start_chr]] = (start_chr, end_chr)
+
+        return chrbin_boundaries
 
     def cluster_to_regions(clusters_, chrom_name):
         """
@@ -614,19 +628,36 @@ def hierarchical_clustering(boundary_list, clusters_cutoff=[]):
 
         return zip([chrom_name] * len(order), start_list[order], end_list[order])
 
-    return_clusters = {} # collects the genomic positions of the clusters per chromosome
-                         # The values are a list, one for each cutoff.
-    for chrom_idx, chrom_name in enumerate(unique_chr):
+    # run the hierarchical clustering per chromosome
+    if clusters_cutoff:
+        # sort in reverse order
+        clusters_cutoff = np.sort(np.unique(clusters_cutoff))[::-1]
+
+    chrom, start, value = zip(*boundary_list)
+    chr_boundaries_id = get_chromome_bin_ids(chrom)
+
+    # unique_chr, indices = np.unique(chrom, return_index=True)
+    # indices = indices[1:]  # the first element is not needed
+    # start_per_chr = np.split(start, indices)
+    # value_per_chr = np.split(value, indices)
+    z_value = {}
+
+    # return_clusters collects the genomic positions of the clusters per chromosome.
+    # The values are a list, one for each cutoff.
+    return_clusters = {}
+    for chrom_name, _range in chr_boundaries_id.iteritems():
+        chr_star_idx, chr_end_idx = _range
         z_value[chrom_name] = []
         return_clusters[chrom_name] = []
         clust_cutoff = clusters_cutoff[:]
-        domains = get_domain_positions(start_per_chr[chrom_idx])
+        domains = get_domain_positions(start[chr_star_idx:chr_end_idx])
+
         clusters = [{x} for x in range(len(domains))]
 
         # initialize the cluster_x with the genomic position of domain centers
         cluster_x = [int(d_start + float(d_end - d_start) / 2) for d_start, d_end in domains]
         # number of domains should be equal to the number of values minus 1
-        assert len(domains) == len(value_per_chr[chrom_idx]) - 1, "error"
+        assert len(domains) == len(value[chr_star_idx:chr_end_idx]) - 1, "error"
 
         """
         domain:id
@@ -637,21 +668,20 @@ def hierarchical_clustering(boundary_list, clusters_cutoff=[]):
         values id after removing flanks
                    0               1                2
          """
-        values = value_per_chr[chrom_idx][1:-1] # remove flanking values that do not join TADs
-        start_trimmed = start_per_chr[chrom_idx][1:-1]
+        values = value[chr_star_idx:chr_end_idx][1:-1]  # remove flanking values that do not join TADs
         # from highest to lowest merge neighboring domains
         order = np.argsort(values)[::-1]
         for idx, order_idx in enumerate(order):
             if len(clust_cutoff) and idx + 1 < len(order) and \
                     values[order_idx] >= clust_cutoff[0] > values[order[idx + 1]]:
-                clust_cutoff = clust_cutoff[1:] # remove first element
+                clust_cutoff = clust_cutoff[1:]  # remove first element
                 return_clusters[chrom_name].append(cluster_to_regions(clusters, chrom_name))
             # merge domains order_idx - 1 and order_idx
             left = find_in_clusters(clusters, order_idx)
             right = find_in_clusters(clusters, order_idx + 1)
             z_value[chrom_name].append((left, right, values[order_idx],
-                                  len(clusters[left]) + len(clusters[right]),
-                                  cluster_x[left], cluster_x[right]))
+                                        len(clusters[left]) + len(clusters[right]),
+                                        cluster_x[left], cluster_x[right]))
 
             # set as new cluster position the center between the two merged
             # clusters
@@ -782,12 +812,15 @@ def save_domains_and_boundaries(chrom, chr_start, chr_end, matrix, min_idx, args
         chr_start_idx = [0]
         chr_end_idx = [len(chrom) - 1]
     else:
-        chr_end_idx = chr_start_idx
+        # eg chr_start_ix is [0, 304, 409, 600]
+        # for unique_chroms: ['chr1', 'chr2', 'chr3', 'chr4']
+        # the
         # the indices for the end of the chromosomes
         # are the the start indices - 1, with the exception
         # of the idx == 0 that is transformed into the length
         # of the chromosome to get the idx for the end of the
         # last chromosome
+        chr_end_idx = chr_start_idx
         chr_end_idx[chr_end_idx == 0] = len(chrom)
         chr_end_idx -= 1
 
@@ -1042,8 +1075,9 @@ def main(args=None):
     save_domains_and_boundaries(chrom, chr_start, chr_end, matrix, min_idx, args)
 
     # turn of hierarchical clustering which is apparently not working.
-    if 2==1:
-        boundary_list = [(hic_ma.cut_intervals[min_][0], hic_ma.cut_intervals[min_][2], mean_mat[min_]) for min_ in min_idx]
+    if 2==2:
+        mat_mean = matrix.mean(axis=1)
+        boundary_list = [(chrom[min_], chr_end[min_], mat_mean[min_]) for min_ in min_idx]
 
         Z, clusters = hierarchical_clustering(boundary_list, clusters_cutoff=[0.4, 0.3, 0.2])
 

@@ -98,6 +98,9 @@ class PlotTracks(object):
             elif properties['file_type'] == 'boundaries':
                 self.track_obj_list.append(PlotBoundaries(properties))
 
+            elif properties['file_type'] == 'dendrogram':
+                self.track_obj_list.append(PlotDendrogram(properties))
+
             if 'title' in properties:
                 # adjust titles that are too long
                 properties['title'] = textwrap.fill(properties['title'], 12)
@@ -1658,6 +1661,136 @@ class PlotArcs(TrackPlot):
         label_ax.text(0.3, 0.0, self.properties['title'],
                       horizontalalignment='left', size='large',
                       verticalalignment='bottom', transform=label_ax.transAxes)
+
+
+class PlotDendrogram(TrackPlot):
+    """
+    Uses a linkage stored in a BED format to plot a dendrogram.
+    The BED format for the linkage is:
+    chrom pos_a pos_b, id, distance, ., id_cluster_a, id_cluster_b, num_clusters
+    Each chromosome has a separate linkage. This file is produced
+    by hicFindTADs.py
+    """
+    def __init__(self, *args, **kwarg):
+        super(PlotDendrogram, self).__init__(*args, **kwarg)
+
+        # the order of the file is important and must not be sorted.
+        # thus, the chromosomes are supposed to be one after the other
+        z_value = []
+        with open(self.properties['file'], 'r') as file_h:
+            for line in file_h.readlines():
+                [chrom, pos_a, pos_b, clust_id, distance, strand, id_cluster_a, id_cluster_b, num_clusters] = \
+                    line.strip().split('\t')
+                if chrom != chrom_region:
+                    continue
+
+                try:
+                    pos_a = int(pos_a)
+                    pos_b = int(pos_b)
+                    id_cluster_a = int(id_cluster_a)
+                    id_cluster_b = int(id_cluster_b)
+                    distance = float(distance)
+
+                except ValueError:
+                    exit("BED values not valid")
+
+                z_value.append((id_cluster_a, id_cluster_b, distance, num_clusters, pos_a, pos_b))
+
+        self.boxes = self.dendrogram_calculate_info(z_value)
+
+    def plot(self, ax, label_ax, chrom_region, start_region, end_region):
+
+        min_y = 1
+        max_y = 0
+        for box in self.boxes:
+            if box[1, :].min() < min_y:
+                min_y = box[1, :].min()
+            if box[1, :].max() > max_y:
+                max_y = box[1, :].max()
+
+            ax.plot(box[0, :], box[1, :], 'black')
+
+        if 'hlines' in self.properties and self.properties['hlines'] != '':
+            # split by space
+            for hline in self.properties['hlines'].split(" "):
+                try:
+                    hline = float(hline)
+                except ValueError:
+                    sys.stderr.write("hlines value: {} in dendrogram is not valid.\n".format(hline))
+
+                ax.hlines(hline, start_region, end_region, 'red', '--')
+
+        if 'orientation' in self.properties and self.properties['orientation'] == 'inverted':
+            ax.set_ylim(max_y, min_y)
+        else:
+            ax.set_ylim(min_y, max_y)
+
+        ax.set_xlim(start_region, end_region)
+        #ax.set_frame_on(False)
+        #ax.axes.get_xaxis().set_visible(False)
+        #ax.axes.get_yaxis().set_visible(False)
+
+        label_ax.text(0.15, 0, self.properties['title'], horizontalalignment='left', size='large',
+                      verticalalignment='bottom', transform=label_ax.transAxes)
+
+
+    @staticmethod
+    def dendrogram_calculate_info(z):
+        """
+        :param z: list of 6-tuples containing the linkage
+        information in :func:`hierarchical_clustering`
+        >>> _z_ = [(1, 2, 0.5, 2, 0, 10), (4, 3, 0.6, 3, 5, 15)]
+        >>> _dendrogram_calculate_info(_z_)
+        [array([[  0. ,   0. ,  10. ,  10. ],
+               [  0.5,   0.5,   0.5,   0.5]]), array([[  5. ,   5. ,  15. ,  15. ],
+               [  0.6,   0.6,   0.6,   0.5]])]
+        """
+        boxes = []
+
+        def is_cluster_leaf(cluster_id):
+            """
+            A cluster is a leaf if the id is less than
+            the length of Z
+            """
+
+            return False if cluster_id >= num_leafs else True
+
+        def prev_cluster_y(cluster_id):
+            """
+            The prev_cluster y has as index:
+            cluster_id - num_leafs and the
+            distance is found at position 2.
+            """
+            return z[cluster_id - num_leafs][2]
+
+        # at each iteration a sort of box is drawn:
+        #
+        #           _______
+        #   |       |     |
+        #   y       |       pos-b, y - prev_cluster_y(id_cluster_b)
+        #   |       |
+        #           pos_a, y - prev_cluster_y(id_cluster_a)
+        #
+        # ``y`` is the distance.
+        #
+        # Four points are required to define such box which
+        # are obtained in the following code
+
+        num_leafs = len(z) + 1
+        for id_cluster_a, id_cluster_b, distance, num_clusters, pos_a, pos_b in z:
+            if is_cluster_leaf(id_cluster_a):
+                y_a = 0.5
+            else:
+                y_a = prev_cluster_y(id_cluster_a)
+
+            if is_cluster_leaf(id_cluster_b):
+                y_b = 0.5
+            else:
+                y_b = prev_cluster_y(id_cluster_b)
+
+            boxes.append(np.array([[pos_a, pos_a, pos_b, pos_b],
+                                   [y_a, distance, distance, y_b]]))
+        return boxes
 
 
 def change_chrom_names(chrom):
