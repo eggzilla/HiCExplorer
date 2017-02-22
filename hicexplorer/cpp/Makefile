@@ -1,2 +1,1 @@
-all: hicBuildMatrix.o
-        g++ hicBuildMatrix.cpp -I hicBuildMatrix.h -I /home/wolffj/miniconda2/envs/hic_cpp/include
+g++ -o hicBuildMatrix.o main.cpp hicBuildMatrix.cpp hicBuildMatrix.h  -lrt -g -L/usr/local/lib -lz -lbz2 -DSEQAN_HAS_ZLIB=1 -DSEQAN_HAS_BZIP2=1
