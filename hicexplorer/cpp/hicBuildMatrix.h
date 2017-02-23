@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <seqan/bam_io.h>
+#include <assert.h>
 
 #include <omp.h>
 
@@ -37,14 +38,14 @@ class HicBuildMatrix {
     ~HicBuildMatrix();
     void buildMatrix();
     void intervalListToIntervalTree(int interval_list);
-    void get_bins(int bin_size, int chrom_size, int region);
-    void bed2interval_list(int bed_file_handler);
-    void get_rf_bins(int rf_cut_intervals, int min_distance,int max_distance);
-    void get_chrom_sizes(int bam_handle);
-    void check_dangling_end(int read, int dangling_sequences);
-    void get_supplementary_alignment(int read, int pysam_obj);
-    void get_correct_map(int primary, int supplement_list);
-    void enlarge_bins(int bin_intervals, int chrom_sizes);
+    void getBins(int bin_size, int chrom_size, int region);
+    void bedToIntervalVector(int bed_file_handler);
+    void getRfBins(int rf_cut_intervals, int min_distance,int max_distance);
+    void getChromSizes(int bam_handle);
+    void checkDanglingEnd(int read, int dangling_sequences);
+    std::vector<seqan::BamAlignmentRecord*> getSupplementaryAlignment(seqan::BamAlignmentRecord* pBamAlignmentRecord, seqan::BamStream* pBamStream);
+    void getCorrectMap(int primary, int supplement_list);
+    void enlargeBins(int bin_intervals, int chrom_sizes);
 };
 
 
