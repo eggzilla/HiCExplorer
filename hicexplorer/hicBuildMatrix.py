@@ -543,7 +543,7 @@ def main(args=None):
     args.samFiles[1].close()
     args.outBam.close()
     out_bam = pysam.Samfile(args.outBam.name, 'wb', template=str1)
-
+    print str1
     chrom_sizes = get_chrom_sizes(str1)
     # initialize read start positions matrix
     read_pos_matrix = ReadPositionMatrix(chrom_sizes)
@@ -614,6 +614,7 @@ def main(args=None):
 
     while True:
         iter_num += 1
+       
         if iter_num % 1e6 == 0:
             elapsed_time = time.time() - start_time
             sys.stderr.write("processing {} lines took {:.2f} "
@@ -628,7 +629,9 @@ def main(args=None):
             break
         try:
             mate1 = str1.next()
+            print "First: ", mate1, "\n\n"
             mate2 = str2.next()
+            print "second: ", mate2, "\n\n"
         except StopIteration:
             break
 
@@ -753,9 +756,12 @@ def main(args=None):
             same-strand-left
             <---------------              <----------------
             """
-
+            print "Reverse: ", first_mate.is_reverse
+            print "Reverse1: " , second_mate.is_reverse
+            print 
             if not first_mate.is_reverse and second_mate.is_reverse:
                 orientation = 'inward'
+                break
             elif first_mate.is_reverse and not second_mate.is_reverse:
                 orientation = 'outward'
             elif first_mate.is_reverse and second_mate.is_reverse:
