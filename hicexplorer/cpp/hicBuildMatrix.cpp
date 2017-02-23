@@ -37,52 +37,59 @@ HicBuildMatrix::HicBuildMatrix(char* pSamFileOne, char* pSamFileTwo,
 HicBuildMatrix::~HicBuildMatrix() {
 
 }
- 
+
+std::vector<seqan::BamAlignmentRecord*> HicBuildMatrix::getSupplementaryAlignment(seqan::BamAlignmentRecord* pBamAlignmentRecord, seqan::BamStream* pBamStream) {
+
+}
+
 void HicBuildMatrix::buildMatrix() {
-
-    std::vector<seqan::BamStream*> streamsFileOne(mThreads);
-    std::vector<seqan::BamStream*> streamsFileTwo(mThreads);
-
-    std::vector<seqan::BamAlignmentRecord*> recordFileOne(mThreads);
-    std::vector<seqan::BamAlignmentRecord*> recordFileTwo(mThreads);
+    seqan::BamStream fileOne(mSamFileOne);
+    seqan::BamStream fileTwo(mSamFileTwo);
     
+    seqan::BamAlignmentRecord* recordFileOne;
+    seqan::BamAlignmentRecord* recordFileTwo;
+    std::vector<seqan::BamAlignmentRecord*> recordsBufferOne(1e6);
+    std::vector<seqan::BamAlignmentRecord*> recordsBufferTwo(1e6); 
+    std::vector<seqan::BamAlignmentRecord*> mateOneSupplementaryVector();
+    std::vector<seqan::BamAlignmentRecord*> mateTwoSupplementaryVector();
     
-    for (size_t i = 0; i < mThreads; ++i) {
-        streamsFileOne[i] = new seqan::BamStream(mSamFileOne);
-        streamsFileTwo[i] = new seqan::BamStream(mSamFileTwo);
-        recordFileOne[i] = new seqan::BamAlignmentRecord();
-        recordFileTwo[i] = new seqan::BamAlignmentRecord();
+    size_t lineCount = 0;
+    while (!atEnd(fileOne) && !atEnd(fileTwo)) {
+        recordFileOne = new seqan::BamAlignmentRecord();
+        recordFileTwo = new seqan::BamAlignmentRecord();
+        
+        
+        readRecord(*(recordFileOne), fileOne);
+        readRecord(*(recordFileTwo), fileTwo);
+
+        while (*(recordFileOne).flag & 256 == 256) {
+            if (!atEnd(fileOne)) {
+                readRecord(*(recordFileOne), fileOne);
+            } else {
+                break;
+            }
+        }
+        while (*(recordFileTwo).flag & 256 == 256) {
+            if (!atEnd(fileTwo)) {
+                readRecord(*(recordFileTwo), fileTwo);
+            } else {
+                break;
+            }
+        } 
+        assert (*(recordFileOne).qName == *(recordFileTwo).qName);
+
+        mateOneSupplementaryVector.clear();
+        mateTwoSupplementaryVector.clear();
+
+        mateOneSupplementaryVector = getSupplementaryAlignment();
+        mateTwoSupplementaryVector = getSupplementaryAlignment();
+        lineCount++;
+        // read a million lines and process them in parallel
+        if (lineCount % 1e6 == 0) {
+
+        }
     }
-    // TODO: get bam file length and divide it by mThreads
-    size_t chunkSize = 0;
-
-    omp_set_dynamic(0);
-    #pragma omp parallel for num_threads(mThreads)
-    for (size_t i = OMP_GET_THREAD_NUM() * chunkSize; 
-            i <  OMP_GET_THREAD_NUM() * (chunkSize + 1) 
-            && !atEnd(*(streamsFileOne[OMP_GET_THREAD_NUM()])) && !atEnd(*(streamsFileTwo[OMP_GET_THREAD_NUM()])); ++i) {
-              
-                readRecord(*(recordFileOne[OMP_GET_THREAD_NUM()]), *(streamsFileOne[OMP_GET_THREAD_NUM()]));
-                readRecord(*(recordFileTwo[OMP_GET_THREAD_NUM()]), *(streamsFileTwo[OMP_GET_THREAD_NUM()]));
-
-    }
 
 
 
-
-    std::cout << mSamFileOne << std::endl;
- // Open input stream, BamStream can read SAM and BAM files.
-    seqan::BamStream bamStreamIn(mSamFileOne);
-    // Open output stream, "-" means stdin on if reading, else stdout.
-    seqan::BamStream bamStreamOut("-", seqan::BamStream::WRITE);
-    // Copy header.  The header is automatically written out before
-    // the first record.
-    bamStreamOut.header = bamStreamIn.header;
-
-    seqan::BamAlignmentRecord record;
-    while (!atEnd(streamsFileOne[]))
-    {
-        readRecord(record, bamStreamIn);
-        writeRecord(bamStreamOut, record);
-    }
 }
