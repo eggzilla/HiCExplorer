@@ -1,7 +1,7 @@
 import argparse
 import sys
 import numpy as np
-from scipy.sparse import coo_matrix, dia_matrix
+from scipy.sparse import coo_matrix, dia_matrix, dok_matrix
 import time
 from os import unlink
 import os
@@ -22,70 +22,6 @@ from hicexplorer._version import __version__
 import multiprocessing
 
 debug = 1
-# from multiprocessing.managers import SyncManager
-
-# from multiprocessing.managers import MakeProxyType
-
-# BaseSetProxy = MakeProxyType('BaseSetProxy', [
-#     '__and__', '__contains__', '__iand__', '__ior__',
-#     '__isub__', '__ixor__', '__len__', '__or__', '__rand__', '__ror__', '__rsub__',
-#     '__rxor__', '__sub__', '__xor__', 'add', 'clear', 'copy', 'difference',
-#     'difference_update', 'discard', 'intersection', 'intersection_update', 'isdisjoint',
-#     'issubset', 'issuperset', 'pop', 'remove', 'symmetric_difference',
-#     'symmetric_difference_update', 'union', 'update']
-# )
-
-
-# class SetProxy(BaseSetProxy):
-#     # in-place hooks need to return `self`, specify these manually
-#     def __iand__(self, value):
-#         self._callmethod('__iand__', (value,))
-#         return self
-
-#     def __ior__(self, value):
-#         self._callmethod('__ior__', (value,))
-#         return self
-
-#     def __isub__(self, value):
-#         self._callmethod('__isub__', (value,))
-#         return self
-
-#     def __ixor__(self, value):
-#         self._callmethod('__ixor__', (value,))
-#         return self
-
-
-# class Duplicate(Structure):
-#     _fields_ = [('hash', c_int), ('value', c_bool)]
-# class ReadPositionMatrix(object):
-#     """ class to check for PCR duplicates.
-#     A sparse matrix having as bins all possible
-#     start sites (single bp resolution)
-#     is created. PCR duplicates
-#     are determined by checking if the matrix
-#     cell is already filled.
-
-#     """
-
-#     def __init__(self, pManager):
-#         """
-#         >>> rp = ReadPositionMatrix()
-#         >>> rp.is_duplicated('1', 0, '2', 0)
-#         False
-#         >>> rp.is_duplicated('1', 0, '2', 0)
-#         True
-#         """
-
-#         self.pos_matrix = pManager.set()
-
-#     def is_duplicated(self, chrom1, start1, chrom2, start2):
-
-#         id_string = "%s%s-%s%s" % (chrom1, start1, chrom2, start2)
-#         if id_string in self.pos_matrix:
-#             return True
-#         else:
-#             self.pos_matrix.add(id_string)
-#             self.pos_matrix.add("%s%s-%s%s" % (chrom2, start2, chrom1, start1))
 
 class ReadPositionMatrix(object):
     """ class to check for PCR duplicates.
@@ -135,7 +71,6 @@ def parse_arguments(args=None):
                         type=argparse.FileType('r'),
                         required=True)
 
-    # define the arguments
     parser.add_argument('--outBam', '-b',
                         help='Bam file to process. Optional parameter. Computation will be significant longer if this option is set.',
                         metavar='bam file',
@@ -236,7 +171,7 @@ def parse_arguments(args=None):
                         help='Size of the input buffer of each thread. One million elements per input file per thread is the default value.'
                              ' Reduce value to decrease memory usage.',
                         required=False,
-                        default=1e6,
+                        default=1e5,
                         type=int
                         )
     parser.add_argument('--doTestRun',
@@ -597,6 +532,7 @@ def readBamFiles(pFileOneIterator, pFileTwoIterator, pNumberOfItemsPerBuffer, pS
             print "all_data_processed: ", all_data_read
             break
         iter_num += 1
+        # j += 1
 
         # skip 'not primary' alignments
         while mate1.flag & 256 == 256:
@@ -725,13 +661,25 @@ def process_data(pMateBuffer1, pMateBuffer2, pMinMappingQuality,
     hic_matrix = None
 
     coverage = []
+    # coverage = dok_matrix((len(pBinIntervals), ))
+    
     binsize = 10
     if pOutputBamSet:
         out_bam = pysam.Samfile('/dev/shm/' + pOutputName, 'wb', template=pTemplate)
 
+    # for value in pBinIntervals:
+    #     chrom, start, end = value
+    #     coverage.append(np.zeros((end - start) / binsize, dtype='uint16'))
+
+    max_value_interval_size = 0
     for value in pBinIntervals:
         chrom, start, end = value
-        coverage.append(np.zeros((end - start) / binsize, dtype='uint16'))
+        if ((end - start) / binsize) > max_value_interval_size:
+            max_value_interval_size = ((end - start) / binsize)
+
+        # coverage.append(np.zeros((end - start) / binsize, dtype='uint32'))
+    coverage = dok_matrix((len(pBinIntervals), max_value_interval_size), dtype='uint16')
+
     if pMateBuffer1 is None or pMateBuffer2 is None:
 
         pQueueOut.put([hic_matrix, [one_mate_unmapped, one_mate_low_quality, one_mate_not_unique, dangling_end, self_circle, self_ligation, same_fragment,
@@ -744,52 +692,6 @@ def process_data(pMateBuffer1, pMateBuffer2, pMinMappingQuality,
         mate2 = pMateBuffer2[iter_num]
         iter_num += 1
 
-        # # skip if any of the reads is not mapped
-        # if mate1.flag & 0x4 == 4 or mate2.flag & 0x4 == 4:
-        #     one_mate_unmapped += 1
-        #     continue
-
-        # # skip if the read quality is low
-        # if mate1.mapq < pMinMappingQuality or mate2.mapq < pMinMappingQuality:
-        #     # for bwa other way to test
-        #     # for multi-mapping reads is with a mapq = 0
-        #     # the XS flag is not reliable.
-        #     if mate1.mapq == 0 & mate2.mapq == 0:
-        #         one_mate_not_unique += 1
-        #         continue
-
-        #     """
-        #     # check if low quality is because of
-        #     # read being repetitive
-        #     # by reading the XS flag.
-        #     # The XS:i field is set by bowtie when a read is
-        #     # multi read and it contains the mapping score of the next
-        #     # best match
-        #     if 'XS' in dict(mate1.tags) or 'XS' in dict(mate2.tags):
-        #         one_mate_not_unique += 1
-        #         continue
-        #     """
-
-        #     one_mate_low_quality += 1
-        #     continue
-        # if pSkipDuplicationCheck is False:
-        #     # chrom1 = pRefId2name[mate1.rname]
-        #     # start1 = mate1.pos
-        #     # chrom2 = pRefId2name[mate2.rname]
-        #     # start2 = mate2.pos
-        #     # id_string = "%s%s-%s%s" % (chrom1, start1, chrom2, start2)
-        #     # if id_string in pLocalDuplicationCheck:
-        #     #     duplicated_pairs += 1
-        #     #     continue
-        #     # else:
-        #     #     pLocalDuplicationCheck.add(id_string)
-        #     #     pLocalDuplicationCheck.add("%s%s-%s%s" % (chrom2, start2, chrom1, start1))
-        #     if pReadPosMatrix.is_duplicated(pRefId2name[mate1.rname],
-        #                                     mate1.pos,
-        #                                     pRefId2name[mate2.rname],
-        #                                     mate2.pos, pResultIndex):
-        #         duplicated_pairs += 1
-        #         continue
 
         # check if reads belong to a bin
         mate_bins = []
@@ -942,7 +844,8 @@ def process_data(pMateBuffer1, pMateBuffer2, pMinMappingQuality,
             vec_start = max(0, mate.pos - mate_bin.begin) / pBinsize
             vec_end = min(len(coverage[mate_bin_id]), vec_start +
                           len(mate.seq) / pBinsize)
-            coverage[mate_bin_id][vec_start:vec_end] += 1
+            for i in xrange(vec_end, vec_start, 1):
+                coverage[mate_bin_id, i] += 1
 
         row.append(mate_bins[0])
         col.append(mate_bins[1])
@@ -1108,11 +1011,17 @@ def main(args=None):
     # a bin.
     # To save memory, coverage is not measured by bp
     # but by bins of length 10bp
-    coverage = []
+    # coverage = []
     binsize = 10
+    max_value_interval_size = 0
     for value in bin_intervals:
         chrom, start, end = value
-        coverage.append(np.zeros((end - start) / binsize, dtype='uint32'))
+        if ((end - start) / binsize) > max_value_interval_size:
+            max_value_interval_size = ((end - start) / binsize)
+
+        # coverage.append(np.zeros((end - start) / binsize, dtype='uint32'))
+    coverage = dok_matrix((len(bin_intervals), max_value_interval_size), dtype='uint32')
+
     start_time = time.time()
 
     iter_num = 0
@@ -1247,7 +1156,7 @@ def main(args=None):
                     iter_num += result[1][16]
 
                     if result[2] is not None:
-                        coverage = np.add(coverage, result[2])
+                        coverage += result[2]
 
                 queue[i] = None
                 process[i].join()
@@ -1291,15 +1200,17 @@ def main(args=None):
     dia = dia_matrix(([hic_matrix.diagonal()], [0]), shape=hic_matrix.shape)
     hic_matrix = hic_matrix + hic_matrix.T - dia
     # extend bins such that they are next to each other
+    len_bin_intervals = len(bin_intervals)
     bin_intervals = enlarge_bins(bin_intervals[:], chrom_sizes)
     # compute max bin coverage
     bin_max = []
 
-    for cov in coverage:
-        if len(cov) == 0:
+    for i in xrange(len_bin_intervals):
+        max_cover = coverage.getrow(i).maximum()
+        if max_cover== 0:
             bin_max.append(np.nan)
         else:
-            bin_max.append(max(cov))
+            bin_max.append(max_cover)
 
     chr_name_list, start_list, end_list = zip(*bin_intervals)
     bin_intervals = zip(chr_name_list, start_list, end_list, bin_max)
