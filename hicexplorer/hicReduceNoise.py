@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import normalize
 
+import _c_noise_reduction
 
 def parse_arguments(args=None):
     parser = argparse.ArgumentParser(
