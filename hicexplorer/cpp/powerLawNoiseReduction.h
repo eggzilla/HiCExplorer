@@ -1,16 +1,10 @@
-#include <unordered_map>
-#include <vector>
-#include <limits>
-#include <omp.h>
-#include <stdlib.h>
-#include <math.h>
-#include <Python.h>
+#ifndef POWER_LAW_NOISE_REDUCTION_H
+#define POWER_LAW_NOISE_REDUCTION_H
 
 #include "typeDefinitions.h"
 
-#ifndef POWER_LAW_NOISE_REDUCTION_H
-#define POWER_LAW_NOISE_REDUCTION_H
-class PowerLawNoiseReduction() {
+
+class PowerLawNoiseReduction {
     private:
         std::unordered_map<uint32_t, std::vector<matrixElement>* >* mGenomicDistance;
         std::vector<double>* mGenomicDistanceMean;
@@ -22,6 +16,7 @@ class PowerLawNoiseReduction() {
         uint32_t mNumberOfCores;
     
     public:
+        PowerLawNoiseReduction();
         PowerLawNoiseReduction(uint32_t pElementCount, uint32_t pMatrixSize, uint32_t pWindowSize,
                                 float pThresholdVariance, float pThresholdAbsMean, uint32_t pNumberOfCores);
         ~PowerLawNoiseReduction();
@@ -30,6 +25,6 @@ class PowerLawNoiseReduction() {
                                 PyObject * pDataListObj);
         PyObject* parseCppToPython();
         void computeGenomicMean();
-        void correctIterations(uint32_t pDistance, float pPower));
+        void correctInteractions(float pPower, uint32_t pIterations);
 };
 #endif // TYPE_DEFINTIONS_BASIC_H

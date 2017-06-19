@@ -9,6 +9,16 @@ from setuptools import setup
 from setuptools.command.sdist import sdist as _sdist
 from setuptools.command.install import install as _install
 
+from distutils.extension import Extension
+# from distutils.core import setup, Extension
+
+depends_list = ['hicexplorer/cpp/typeDefinitions.h', 'hicexplorer/cpp/powerLawNoiseReduction.h']
+powerLawNoiseReductionModule = Extension('_c_noise_reduction', sources=['hicexplorer/cpp/c_noise_reduction.cpp', 'hicexplorer/cpp/powerLawNoiseReduction.cpp'],
+                    depends=depends_list,
+                    define_macros=[('OPENMP', None)], extra_link_args=["-lm", "-lrt", "-lgomp"],
+                    extra_compile_args=["-fopenmp", "-O3", "-std=c++11", "-funroll-loops"])
+
+
 VERSION_PY = """
 # This file is originally generated from Git information by running 'setup.py
 # version'. Distribution tarballs contain a pre-generated copy of this file.
@@ -114,6 +124,7 @@ setup(
     classifiers=[
         'Intended Audience :: Science/Research',
         'Topic :: Scientific/Engineering :: Bio-Informatics'],
+    ext_modules=[powerLawNoiseReductionModule],
     install_requires=[
         "numpy >= 1.13.0",
         "scipy >= 0.19.0",

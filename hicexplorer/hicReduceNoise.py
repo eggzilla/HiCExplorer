@@ -10,11 +10,13 @@ from multiprocessing.sharedctypes import Array, RawArray
 
 from hicexplorer import HiCMatrix as hm
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
-from sklearn.preprocessing import normalize
+# from sklearn.preprocessing import normalize
+from scipy.sparse import csr_matrix
 
 import _c_noise_reduction
+
 
 def parse_arguments(args=None):
     parser = argparse.ArgumentParser(
@@ -31,6 +33,36 @@ def parse_arguments(args=None):
                         default=4,
                         type=int
                         )
+    parser.add_argument('--window_size',
+                        help='',
+                        required=False,
+                        default=5,
+                        type=int
+                        )
+    parser.add_argument('--threshold_variance',
+                        help='',
+                        required=False,
+                        default=0.1,
+                        type=float
+                        )
+    parser.add_argument('--threshold_abs_mean',
+                        help='',
+                        required=False,
+                        default=100,
+                        type=float
+                        )
+    parser.add_argument('--power',
+                        help='',
+                        required=False,
+                        default=-3,
+                        type=float
+                        )
+    parser.add_argument('--iterations',
+                        help='',
+                        required=False,
+                        default=5,
+                        type=int
+                        )
     return parser
 
 
@@ -42,93 +74,48 @@ class ReduceNoise():
     def calculateDistributionMatrix(self, args=None):
         args = parse_arguments().parse_args(args)
         hicMatrix = hm.hiCMatrix(args.matrix)
-        print(hicMatrix.matrix.shape[0], hicMatrix.matrix.shape[1])
-        distribution = np.zeros(hicMatrix.matrix.shape[0])
+        # print(hicMatrix.matrix.shape[0], hicMatrix.matrix.shape[1])
+        # distribution = np.zeros(hicMatrix.matrix.shape[0])
         instances, features = hicMatrix.matrix.nonzero()
-        for i, j in zip(instances.tolist(), features.tolist()):
-            if i - j < 0:
-                continue
-            distribution[i - j] += hicMatrix.matrix[i, j]
-        plt.yscale('log')
-        plt.xscale('log')
-        plt.xlabel("Genomic distances")
-        plt.ylabel("Number of interactions")
-        plt.plot(list(range(len(distribution))), distribution)
-        plt.savefig("interactions per genomic distance")
+        # for i, j in zip(instances.tolist(), features.tolist()):
+        #     if i - j < 0:
+        #         continue
+        #     distribution[i - j] += hicMatrix.matrix[i, j]
+        # plt.yscale('log')
+        # plt.xscale('log')
+        # plt.xlabel("Genomic distances")
+        # plt.ylabel("Number of interactions")
+        # plt.plot(list(range(len(distribution))), distribution)
+        # plt.savefig("interactions per genomic distance")
         # sliding window over genomic distances
-        window_size = 5
-        threshold_variance = 0.0008
-        threshold_abs_mean = 80
-        power = -3
-        for i in xrange(0, len(distribution) - window_size, window_size):
-            # compute mean
-            # compute variance
-            # if variance is too big, skip
-            normalized_values = normalize(distribution[i:i + window_size].reshape(1, -1))
-            mean_absolute = np.floor(np.mean(distribution[i:i + window_size]))
-            variance_normalized = np.var(normalized_values)
-            if variance_normalized > threshold_variance and mean_absolute > threshold_abs_mean:
-                continue
+        window_size = args.window_size
+        threshold_variance = args.threshold_variance
+        threshold_abs_mean = args.threshold_abs_mean
+        power = args.power
+        threads = args.threads
+        iterations = args.iterations
+        # calculate changes in c++
+        instances_new, features_new, data_new = _c_noise_reduction.c_powerLawNoiseReduction(instances.tolist(), features.tolist(), hicMatrix.matrix.data.tolist(),
+                                                                                            window_size, threshold_variance, threshold_abs_mean,
+                                                                                            len(instances.tolist()), hicMatrix.matrix.shape[0], power, threads,
+                                                                                            iterations)
 
-            # set all genomic distances within window size to absolute mean value
-            values = []
-            # index_values_row = []
-            # index_values_column = []
-            print("sliding window iteration: ", i)
-            for j in range(i, i + window_size):
-                for k, l in zip(range(0, len(distribution)), range(j, len(distribution))):
-                    # TODO get correct values
-                    if hicMatrix.matrix[k, l] != 0:
-                        values.append(hicMatrix.matrix[k, l])
-
-                mean_interaction_count_difference = abs(mean_absolute - distribution[i])
-                change_values = [0] * len(values)
-                if mean_absolute < distribution[i]:
-                    # rich-getting-richer
-                    for k in range(len(values)):
-                        change_values[k] = ((1 - (values[k] / distribution[i])) ** power) * mean_interaction_count_difference
-                else:
-                    # poor-getting-poorer
-                    for k in range(len(values)):
-                        change_values[k] = (((values[k] / distribution[i])) ** power) * mean_interaction_count_difference
-                # normalize to range [0, mean_interaction_count_difference]
-                min_value = min(change_values)
-                max_value = max(change_values)
-                for k in range(len(change_values)):
-                    change_values[k] = mean_interaction_count_difference * ((change_values[k] - min_value) / (max_value - min_value))
-                    if np.isnan(change_values[k]):
-                        change_values[k] = 0
-                if mean_absolute < distribution[i]:
-                    for k in range(len(values)):
-                        values[k] += int(change_values[k])
-                else:
-                    for k in range(len(values)):
-                        values[k] -= int(change_values[k])
-                        if values[k] < 0:
-                            values[k] = 0
-                # TODO: write data back to matrix
-
-                values.reverse()
-                for k, l in zip(range(0, len(distribution)), range(j, len(distribution))):
-                    # TODO get correct values
-                    if hicMatrix.matrix[k, l] != 0:
-                        hicMatrix.matrix[k, l] = values.pop()
-                values = []
-                change_values = []
+        hicMatrix.matrix = csr_matrix((data_new, (instances_new, features_new)), shape=(hicMatrix.matrix.shape[0], hicMatrix.matrix.shape[0]))
         distribution = np.zeros(hicMatrix.matrix.shape[0])
-        instances, features = hicMatrix.matrix.nonzero()
-        for i, j in zip(instances.tolist(), features.tolist()):
-            if i - j < 0:
-                continue
-            distribution[abs(i - j)] += hicMatrix.matrix[i, j]
-        plt.yscale('log')
-        plt.xscale('log')
-        plt.xlabel("Genomic distances")
-        plt.ylabel("Number of interactions")
-        plt.plot(list(range(len(distribution))), distribution)
-        plt.savefig("interactions per genomic distance_corrected")
+        
+        # for i, j in zip(instances_new, features_new):
+        #     if i - j < 0:
+        #         continue
+        #     distribution[abs(i - j)] += hicMatrix.matrix[i, j]
+        # plt.yscale('log')
+        # plt.xscale('log')
+        # plt.xlabel("Genomic distances")
+        # plt.ylabel("Number of interactions")
+        # plt.plot(list(range(len(distribution))), distribution)
+        # plt.savefig("interactions per genomic distance_corrected")
 
         hicMatrix.save("corrected.h5")
+
 
 if __name__ == '__main__':
     reduceNoise = ReduceNoise()
