@@ -32,7 +32,7 @@ static PyObject* powerLawNoiseReduction(PyObject* self, PyObject* args) {
     PowerLawNoiseReduction* powerLawNoiseReduction = new PowerLawNoiseReduction(instancesListLength, matrixSize,
                                                             windowSize, thresholdVariance, thresholdAbsMean, threads);
     powerLawNoiseReduction->parsePythonToCpp(instancesListObj, featuresListObj, dataListObj);
-    powerLawNoiseReduction->computeGenomicMean();
+    // powerLawNoiseReduction->computeGenomicMean();
     powerLawNoiseReduction->correctInteractions(power, iterations);
     PyObject* returnList = powerLawNoiseReduction->parseCppToPython();
     delete powerLawNoiseReduction;

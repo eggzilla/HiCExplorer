@@ -63,6 +63,12 @@ def parse_arguments(args=None):
                         default=5,
                         type=int
                         )
+    parser.add_argument('--output',
+                        help='',
+                        required=False,
+                        default='output',
+                        type=str
+                        )
     return parser
 
 
@@ -74,6 +80,7 @@ class ReduceNoise():
     def calculateDistributionMatrix(self, args=None):
         args = parse_arguments().parse_args(args)
         hicMatrix = hm.hiCMatrix(args.matrix)
+        
         # print(hicMatrix.matrix.shape[0], hicMatrix.matrix.shape[1])
         # distribution = np.zeros(hicMatrix.matrix.shape[0])
         instances, features = hicMatrix.matrix.nonzero()
@@ -101,6 +108,7 @@ class ReduceNoise():
                                                                                             iterations)
 
         hicMatrix.matrix = csr_matrix((data_new, (instances_new, features_new)), shape=(hicMatrix.matrix.shape[0], hicMatrix.matrix.shape[0]))
+        print(len(hicMatrix.matrix.nonzero()[0]), len(hicMatrix.matrix.nonzero()[1]))
         distribution = np.zeros(hicMatrix.matrix.shape[0])
         
         # for i, j in zip(instances_new, features_new):
@@ -114,7 +122,7 @@ class ReduceNoise():
         # plt.plot(list(range(len(distribution))), distribution)
         # plt.savefig("interactions per genomic distance_corrected")
 
-        hicMatrix.save("corrected.h5")
+        hicMatrix.save(args.output)
 
 
 if __name__ == '__main__':

@@ -14,9 +14,11 @@ from distutils.extension import Extension
 
 depends_list = ['hicexplorer/cpp/typeDefinitions.h', 'hicexplorer/cpp/powerLawNoiseReduction.h']
 powerLawNoiseReductionModule = Extension('_c_noise_reduction', sources=['hicexplorer/cpp/c_noise_reduction.cpp', 'hicexplorer/cpp/powerLawNoiseReduction.cpp'],
-                    depends=depends_list,
-                    define_macros=[('OPENMP', None)], extra_link_args=["-lm", "-lrt", "-lgomp"],
-                    extra_compile_args=["-fopenmp", "-O3", "-std=c++11", "-funroll-loops"])
+                                         depends=depends_list,
+                                         define_macros=[('OPENMP', None)], extra_link_args=["-lm", "-lrt", "-lgomp"],
+                                         extra_compile_args=["-fopenmp", "-O3", "-std=c++11", "-funroll-loops"])
+                                        #  extra_link_args=[],
+                                        #  extra_compile_args=["-O3", "-std=c++11", "-funroll-loops"])
 
 
 VERSION_PY = """
