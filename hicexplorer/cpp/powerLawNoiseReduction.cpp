@@ -23,7 +23,8 @@ inline double fastPow(double a, double b) {
 PowerLawNoiseReduction::PowerLawNoiseReduction(){};
 PowerLawNoiseReduction::PowerLawNoiseReduction(uint32_t pElementCount, uint32_t pMatrixSize, 
                                                 uint32_t pWindowSize, float pThresholdVariance, 
-                                                float pThresholdAbsMean, uint32_t pNumberOfCores) {
+                                                float pThresholdAbsMean, uint32_t pNumberOfCores,
+                                                uint32_t pRemoveLowInteractionCount) {
     mGenomicDistance = new std::unordered_map<uint32_t, std::vector<matrixElement>*>();
     for (uint32_t i = 0; i < pMatrixSize; ++i) {
         mGenomicDistance->operator[](i) = new std::vector<matrixElement>();
@@ -38,9 +39,11 @@ PowerLawNoiseReduction::PowerLawNoiseReduction(uint32_t pElementCount, uint32_t 
     mNumberOfCores = pNumberOfCores;
     mMaxElement = 0;
     mMinElement = std::numeric_limits<uint32_t>::max();
+    mRemoveLowInteractionCount = pRemoveLowInteractionCount;
 }
 
 PowerLawNoiseReduction::~PowerLawNoiseReduction() {
+    #pragma omp parallel for num_threads(mNumberOfCores)
     for (uint32_t i = 0; i < mMatrixSize; ++i) {
         delete mGenomicDistance->operator[](i);
     }
@@ -50,6 +53,8 @@ PowerLawNoiseReduction::~PowerLawNoiseReduction() {
 }
 
 void PowerLawNoiseReduction::parsePythonToCpp(PyObject * pInstancesListObj, PyObject * pFeaturesListObj, PyObject * pDataListObj) {
+    
+    std::cout << "Parse to c++ datastructure..." << std::endl;
     
     uint32_t instance;
     uint32_t feature;
@@ -66,7 +71,9 @@ void PowerLawNoiseReduction::parsePythonToCpp(PyObject * pInstancesListObj, PyOb
         PyArg_Parse(pyObject_feature, "I", &feature);
         PyArg_Parse(pyObject_data, "I", &data);
 
-        
+        if (data <= mRemoveLowInteractionCount) {
+            continue;
+        }
         if (data > mMaxElement) {
             mMaxElement = data;
         }
@@ -78,23 +85,28 @@ void PowerLawNoiseReduction::parsePythonToCpp(PyObject * pInstancesListObj, PyOb
         genomicDistance = abs(instance - feature);
         (mGenomicDistance->operator[](genomicDistance))->push_back(element);
     }
+    std::cout << "Parse to c++ datastructure...Done!" << std::endl;
+    
 }
 
 PyObject* PowerLawNoiseReduction::parseCppToPython() {
 
-    PyObject* instances = PyList_New(mElementCount);
-    PyObject* features = PyList_New(mElementCount);
-    PyObject* data = PyList_New(mElementCount);
+    PyObject* instances = PyList_New(0);
+    PyObject* features = PyList_New(0);
+    PyObject* data = PyList_New(0);
     uint32_t counter = 0;
     for (auto it = mGenomicDistance->begin(); it != mGenomicDistance->end(); ++it) {
         for (auto itVector = (it->second)->begin(); itVector != (it->second)->end(); ++itVector) {
+            if ((*itVector).data <= mRemoveLowInteractionCount) {
+                continue;
+            }
             PyObject* pyObject_instance = Py_BuildValue("i", static_cast<int>((*itVector).x));
             PyObject* pyObject_feature = Py_BuildValue("i", static_cast<int>((*itVector).y));
             PyObject* pyObject_data = Py_BuildValue("i", static_cast<int>((*itVector).data));
-            PyList_SetItem(instances, counter, pyObject_instance);
-            PyList_SetItem(features, counter, pyObject_feature);
-            PyList_SetItem(data, counter, pyObject_data);
-            ++counter;            
+            PyList_Append(instances, pyObject_instance);
+            PyList_Append(features, pyObject_feature);
+            PyList_Append(data, pyObject_data);
+            // ++counter;            
         }
     } 
     PyObject* returnList = PyList_New(3);
@@ -118,231 +130,187 @@ void PowerLawNoiseReduction::computeGenomicMean() {
         mGenomicDistanceMean->operator[]((it->first)) = interactionCount / (it->second)->size();
         mGenomicDistanceTotalInteractionCount->operator[]((it->first)) = interactionCount;
     }    
+    std::cout << "Genomic mean is computed..." << std::endl;
 }
 
-void PowerLawNoiseReduction::correctInteractions(float pPower, uint32_t pIterations) {
+void PowerLawNoiseReduction::correctInteractions(float pPower) {
+    std::cout << "Start power law correction..." << std::endl;
 
     float* maxValue = new float [mNumberOfCores];
     float* minValue = new float [mNumberOfCores];
     
-    int epsilon = 10;
-    for (uint32_t m = 0; m < pIterations; ++m) {
-        std::cout << "Iteration: " << m << "/" << pIterations << std::endl;
-        this->computeGenomicMean();
-        for (uint32_t i = 0; i < mNumberOfCores; ++i) {
-            maxValue[i] = 0;
+    int epsilon = 10; 
+   
+    this->computeGenomicMean();
+    for (uint32_t i = 0; i < mNumberOfCores; ++i) {
+        maxValue[i] = 0;
+    }
+    for (uint32_t i = 0; i < mGenomicDistanceMean->size() - mWindowSize; ++i) {
+        
+        std::vector<float> normalizedInteractionCount(mWindowSize, 0.0);
+        
+        float maxElement = *(std::max_element(mGenomicDistanceMean->begin() + i, mGenomicDistanceMean->begin() + i + mWindowSize));
+        float minElement = *(std::min_element(mGenomicDistanceMean->begin() + i, mGenomicDistanceMean->begin() + i + mWindowSize));
+        float meanAbsolute = 0.0;
+        for (uint32_t j = 0; j < mWindowSize; ++j) {
+            normalizedInteractionCount[j] = (mGenomicDistanceMean->operator[](i+j) - minElement) / (maxElement - minElement);
+            meanAbsolute += mGenomicDistanceMean->operator[](i+j);
         }
-        #pragma omp parallel for num_threads(mNumberOfCores)
-        for (uint32_t i = 0; i < mGenomicDistanceMean->size() - mWindowSize; i = i + mWindowSize) {
-            
-            std::vector<float> normalizedInteractionCount(mWindowSize, 0.0);
-            // if (i == 1) {
-            //     break;
-            // }
-            // normalize values
-            // x_i - min(x) / max(x) - min(x)
-            float maxElement = *(std::max_element(mGenomicDistanceMean->begin() + i, mGenomicDistanceMean->begin() + i + mWindowSize));
-            float minElement = *(std::min_element(mGenomicDistanceMean->begin() + i, mGenomicDistanceMean->begin() + i + mWindowSize));
-            float meanAbsolute = 0.0;
-            for (uint32_t j = 0; j < mWindowSize; ++j) {
-                normalizedInteractionCount[j] = (mGenomicDistanceMean->operator[](i+j) - minElement) / (maxElement - minElement);
-                meanAbsolute += mGenomicDistanceMean->operator[](i+j);
-            }
-            meanAbsolute /= mWindowSize;
+        meanAbsolute /= mWindowSize;
 
-            // compute variance on normalized data
-            float meanNormalized = 0.0;
-            for (uint32_t j = 0; j < mWindowSize; ++j) {
-                meanNormalized += normalizedInteractionCount[j];
-            }
-            meanNormalized /= mWindowSize;
-            float varianceNormalized = 0.0;
-            for (uint32_t j = 0; j < mWindowSize; ++j) {
-                varianceNormalized += pow((float) (normalizedInteractionCount[j] - meanNormalized), 2);
-            } 
-            varianceNormalized /= mWindowSize;
+        // compute variance on normalized data
+        float meanNormalized = 0.0;
+        for (uint32_t j = 0; j < mWindowSize; ++j) {
+            meanNormalized += normalizedInteractionCount[j];
+        }
+        meanNormalized /= mWindowSize;
+        float varianceNormalized = 0.0;
+        for (uint32_t j = 0; j < mWindowSize; ++j) {
+            varianceNormalized += pow((float) (normalizedInteractionCount[j] - meanNormalized), 2);
+        } 
+        varianceNormalized /= mWindowSize;
+        
+        // skip if variance is too large and mean of the absolute interactions are not too low
+        if (varianceNormalized > mThresholdVariance) {
+            continue;
+        }
+        
+        maxElement = 0;
+        minElement = std::numeric_limits<float>::max();
+        // correct values based on power law
+    
+        #pragma omp parallel for num_threads(mNumberOfCores)    
+        for (uint32_t j = 0; j < mWindowSize; ++j) {
+            float  meanInteractionCountDifference = abs(meanAbsolute - mGenomicDistanceMean->operator[](i + j));
             
-            // skip if variance is too large and mean of the absolute interactions are not too low
-            if (varianceNormalized > mThresholdVariance) {
+            // to prevent / handle overflows
+            // if (meanInteractionCountDifference < 0.0001) {
+            //     continue;
+            // }
+            // if (meanInteractionCountDifference > mGenomicDistanceMean->operator[](i + j)) {
+            //     continue;
+            // }
+
+            float numberOfInteractionAreas = (mGenomicDistance->operator[](i+j))->size();
+            if (numberOfInteractionAreas == 0) {
                 continue;
             }
             
-            maxElement = 0;
-            minElement = std::numeric_limits<float>::max();
-            // correct values based on power law
-            for (uint32_t j = 0; j < mWindowSize; ++j) {
-                // if (j == 1) break;
-                float  meanInteractionCountDifference = abs(meanAbsolute - mGenomicDistanceMean->operator[](i + j));
-                
-                float numberOfInteractionAreas = (mGenomicDistance->operator[](i+j))->size();
-                if (numberOfInteractionAreas == 0) {
-                    continue;
+            std::vector<float> changeValues (numberOfInteractionAreas, 0.0);
+                            
+            if (mGenomicDistanceMean->operator[](i+j)-epsilon < mGenomicDistance->operator[](i+j)->operator[](0).data && 
+                            mGenomicDistance->operator[](i+j)->operator[](0).data < epsilon + mGenomicDistanceMean->operator[](i+j)){
+                float proportion = 1 / numberOfInteractionAreas;
+                float amount = proportion * meanInteractionCountDifference;
+                if (amount < 1) {
+                    amount = 1;
                 }
-                
-                std::vector<float> changeValues (numberOfInteractionAreas, 0.0);
-                // ~same interaction count at all positions: +/- epsilon
-                // std::cout << "mean: " << mGenomicDistanceMean->operator[](i+j) << " data: ";
-                // for (uint16_t k = 0; k < numberOfInteractionAreas; ++k) {
-                //     std::cout << mGenomicDistance->operator[](i+j)->operator[](k).data << ", ";
-                // }
-                // std::cout << std::endl;
-                // std::cout << std::endl;
-                
-                if (mGenomicDistanceMean->operator[](i+j)-epsilon < mGenomicDistance->operator[](i+j)->operator[](0).data && 
-                             mGenomicDistance->operator[](i+j)->operator[](0).data < epsilon + mGenomicDistanceMean->operator[](i+j)){
-                    float proportion = 1 / numberOfInteractionAreas;
-                    float amount = proportion * meanInteractionCountDifference;
-                    if (amount < 1) {
-                        amount = 1;
-                    }
-                    if (meanAbsolute < mGenomicDistanceMean->operator[](i+j)) {
-                        for (uint32_t k = 0; k < numberOfInteractionAreas; ++k) {
-                            mGenomicDistance->operator[](i+j)->operator[](k).data += amount;
-                            if (mGenomicDistance->operator[](i+j)->operator[](k).data < 0) {
-                                mGenomicDistance->operator[](i+j)->operator[](k).data = 0;
-                            }
-                        }
-                    } else {
-                        for (uint32_t k = 0; k < numberOfInteractionAreas; ++k) {
-                            mGenomicDistance->operator[](i+j)->operator[](k).data -= amount;
-                            if (mGenomicDistance->operator[](i+j)->operator[](k).data < 0) {
-                                mGenomicDistance->operator[](i+j)->operator[](k).data = 0;
-                            }
-                        }
-                    }
-                    continue;
-                }
-                // applying power laws
                 if (meanAbsolute < mGenomicDistanceMean->operator[](i+j)) {
-                    // the rich-getting-richer
-                    
-                    for (uint32_t k = 0; k < changeValues.size(); ++k) {
-                        if (mGenomicDistance->operator[](i+j)->operator[](k).data > 700) {
-                            std::cout << "data: " << mGenomicDistance->operator[](i+j)->operator[](k).data;
-                            std::cout << " mean: " << mGenomicDistanceMean->operator[](i+j);
-                            changeValues[k] = (float) mGenomicDistance->operator[](i+j)->operator[](k).data / (float) mGenomicDistanceTotalInteractionCount->operator[](i+j);
-                            std::cout << "1- x: " << 1 - changeValues[k];
-                            changeValues[k] = 1 - changeValues[k];
-                            
-                            std::cout << " pow: " << pow(changeValues[k], pPower);
-                            changeValues[k] = pow(changeValues[k], pPower);
-                            
-                            std::cout << " amount: " << changeValues[k] * meanInteractionCountDifference;
-                            changeValues[k] = changeValues[k] * meanInteractionCountDifference;
-                            std::cout << std::endl;
-                        } else {
-                        changeValues[k] = (float) mGenomicDistance->operator[](i+j)->operator[](k).data / (float) mGenomicDistanceTotalInteractionCount->operator[](i+j);
-                        changeValues[k] = 1 - changeValues[k];
-                        changeValues[k] = pow(changeValues[k], pPower);
-                        changeValues[k] = changeValues[k] * meanInteractionCountDifference;
-                        }
-                        if (changeValues[k] > maxElement) {
-                            maxElement = changeValues[k];
-                        } else if (changeValues[k] < minElement) {
-                            minElement = changeValues[k];
-                        }
-                    }
-                    
-                } else {
-                    // the poor-getting-poorer
-                    
-                    for (uint32_t k = 0; k < changeValues.size(); ++k) {
-                        
-                        if (mGenomicDistance->operator[](i+j)->operator[](k).data > 700) {
-                            std::cout << "data: " << mGenomicDistance->operator[](i+j)->operator[](k).data;
-                            std::cout << " mean: " << mGenomicDistanceMean->operator[](i+j);
-                            changeValues[k] = mGenomicDistance->operator[](i+j)->operator[](k).data / mGenomicDistanceTotalInteractionCount->operator[](i+j);
-                            
-                            std::cout << " pow: " << pow(changeValues[k], pPower);
-                            changeValues[k] = pow(changeValues[k], pPower);
-                            
-                            std::cout << " amount: " << changeValues[k] * meanInteractionCountDifference;
-                            changeValues[k] = changeValues[k] * meanInteractionCountDifference;
-                            std::cout << std::endl;
-                        } else {
-                            changeValues[k] = mGenomicDistance->operator[](i+j)->operator[](k).data / mGenomicDistanceTotalInteractionCount->operator[](i+j);
-                            changeValues[k] = pow(changeValues[k], pPower);
-                            changeValues[k] = changeValues[k] * meanInteractionCountDifference;
-                        }
-                        if (changeValues[k] > maxElement) {
-                            maxElement = changeValues[k];
-                        } else if (changeValues[k] < minElement) {
-                            minElement = changeValues[k];
-                        }
-                    }
-                    
-                }
-
-                // normalize values to range [0, meanInteractionCountDifference]
-                double differenceRange = maxElement - minElement;
-                
-                for (uint32_t k = 0; k < changeValues.size(); ++k) {
-                    // std::cout << "uncorrected: " << changeValues[k] << std::endl;
-                    // std::cout << "MeanInteractionCOuntDifference: " << meanInteractionCountDifference;
-                    // std::cout << " minElement: " << minElement;
-                    // std::cout << " maxElement: " << maxElement << std::endl;
-                    
-                    changeValues[k] = changeValues[k] - minElement;
-                    changeValues[k] /= differenceRange;
-                    changeValues[k] = floor(changeValues[k] * meanInteractionCountDifference);
-                    if (changeValues[k] < pow(2, 10) * -1 || changeValues[k] > pow(2, 10)) {
-                        // std::cout << "Overflow" << std::endl;
-                        printf("%.2Lf\n", changeValues[k]);
-                        printf("%lf\n", pow(2, 30) * -1);
-                    }
-                    
-                    
-                    // changeValues[k] = meanInteractionCountDifference * ((changeValues[k] - minElement) / differenceRange);
-                    // if (changeValues[k] != changeValues[k]) {
-                    //     // according to IEEE f != f is true if f == nan
-                    //     // https://stackoverflow.com/questions/570669/checking-if-a-double-or-float-is-nan-in-c
-                    //     changeValues[k] = 0;
-                    // }
-                    // std::cout << "corrected: " << changeValues[k] << std::endl;
-                }
-                
-                
-                if (meanAbsolute < mGenomicDistanceMean->operator[](i+j)) {
-                    for(uint32_t k = 0; k < (mGenomicDistance->operator[](i+j))->size(); ++k) {
-                        // std::cout << "RIchorgData: " << (mGenomicDistance->operator[](i+j))->operator[](k).data << std::endl;
-                        if ((mGenomicDistance->operator[](i+j))->operator[](k).data > 800) {
-                            std::cout << "More than 800: " << (mGenomicDistance->operator[](i+j))->operator[](k).data;
-                            std::cout << " Correction factor: " << static_cast<float>(changeValues[k]) << std::endl;
-                        }
-                        (mGenomicDistance->operator[](i+j))->operator[](k).data += static_cast<int32_t>(changeValues[k]);
-                        if ((mGenomicDistance->operator[](i+j))->operator[](k).data < 0) {
-                            (mGenomicDistance->operator[](i+j))->operator[](k).data = 0;
-                        }
-                        if ((mGenomicDistance->operator[](i+j))->operator[](k).data > maxValue[omp_get_thread_num()]) {
-                            maxValue[omp_get_thread_num()] = (mGenomicDistance->operator[](i+j))->operator[](k).data;
-                        }
-                        if ((mGenomicDistance->operator[](i+j))->operator[](k).data < minValue[omp_get_thread_num()]) {
-                            minValue[omp_get_thread_num()] = (mGenomicDistance->operator[](i+j))->operator[](k).data;
-                        }
-                        // std::cout << "RichcorrectedData: " << (mGenomicDistance->operator[](i+j))->operator[](k).data << std::endl;
-                    }
-                } 
-                else {
-                    for(uint32_t k = 0; k < (mGenomicDistance->operator[](i+j))->size(); ++k) {
-                        // std::cout << "PoororgData: " << (mGenomicDistance->operator[](i+j))->operator[](k).data << std::endl;
-                        
-                        (mGenomicDistance->operator[](i+j))->operator[](k).data -= static_cast<int32_t>(changeValues[k]);
-                        if ((mGenomicDistance->operator[](i+j))->operator[](k).data < 0) {
+                    for (uint32_t k = 0; k < numberOfInteractionAreas; ++k) {
+                        mGenomicDistance->operator[](i+j)->operator[](k).data += amount;
+                        if (mGenomicDistance->operator[](i+j)->operator[](k).data < 0) {
                             mGenomicDistance->operator[](i+j)->operator[](k).data = 0;
                         }
-                        if ((mGenomicDistance->operator[](i+j))->operator[](k).data > maxValue[omp_get_thread_num()]) {
-                            maxValue[omp_get_thread_num()] = (mGenomicDistance->operator[](i+j))->operator[](k).data;
+                    }
+                } else {
+                    for (uint32_t k = 0; k < numberOfInteractionAreas; ++k) {
+                        mGenomicDistance->operator[](i+j)->operator[](k).data -= amount;
+                        if (mGenomicDistance->operator[](i+j)->operator[](k).data < 0) {
+                            mGenomicDistance->operator[](i+j)->operator[](k).data = 0;
                         }
-                        if ((mGenomicDistance->operator[](i+j))->operator[](k).data < minValue[omp_get_thread_num()]) {
-                            minValue[omp_get_thread_num()] = (mGenomicDistance->operator[](i+j))->operator[](k).data;
-                        }
-                        // std::cout << "PoorcorrectedData: " << (mGenomicDistance->operator[](i+j))->operator[](k).data << std::endl;
-                        
+                    }
+                }
+                continue;
+            }
+            // applying power law
+            if (meanAbsolute < mGenomicDistanceMean->operator[](i+j)) {
+                // the rich-getting-richer
+                
+                for (uint32_t k = 0; k < changeValues.size(); ++k) {
+                    
+                    changeValues[k] = (float) mGenomicDistance->operator[](i+j)->operator[](k).data / (float) mGenomicDistanceTotalInteractionCount->operator[](i+j);
+                    changeValues[k] = 1 - changeValues[k];
+                    changeValues[k] = pow(changeValues[k], pPower);
+                    changeValues[k] = changeValues[k] * meanInteractionCountDifference;
+                    // catch overflows
+                    if (changeValues[k] < -0.00001) {
+                        // printf("%lf", changeValues[k]);
+                        changeValues[k] = 0;
+                        continue;
+                    }
+                    if (changeValues[k] > maxElement) {
+                        maxElement = changeValues[k];
+                    } else if (changeValues[k] < minElement) {
+                        minElement = changeValues[k];
+                    }
+                }
+                
+            } else {
+                // the poor-getting-poorer
+                
+                for (uint32_t k = 0; k < changeValues.size(); ++k) {
+                    
+                    changeValues[k] = mGenomicDistance->operator[](i+j)->operator[](k).data / mGenomicDistanceTotalInteractionCount->operator[](i+j);
+                    changeValues[k] = pow(changeValues[k], pPower);
+                    changeValues[k] = changeValues[k] * meanInteractionCountDifference;
+                    // catch / handle overflows
+                    if (changeValues[k] < 0.001) {
+                        changeValues[k] = 0;
+                        continue;
+                    }
+                    if (changeValues[k] > maxElement) {
+                        maxElement = changeValues[k];
+                    } else if (changeValues[k] < minElement) {
+                        minElement = changeValues[k];
+                    }
+                }
+                
+            }
+
+            // normalize values to range [0, meanInteractionCountDifference]
+            double differenceRange = maxElement - minElement;
+            
+            for (uint32_t k = 0; k < changeValues.size(); ++k) {
+                
+                if (changeValues[k] > meanInteractionCountDifference) {
+                    changeValues[k] = 0;                        
+                    continue;
+                }
+                
+                changeValues[k] = changeValues[k] - minElement;
+                changeValues[k] /= differenceRange;
+                changeValues[k] = floor(changeValues[k] * meanInteractionCountDifference);
+                
+            }
+            
+            
+            if (meanAbsolute < mGenomicDistanceMean->operator[](i+j)) {
+                for(uint32_t k = 0; k < (mGenomicDistance->operator[](i+j))->size(); ++k) {
+                    
+                    (mGenomicDistance->operator[](i+j))->operator[](k).data += static_cast<int32_t>(changeValues[k]);
+                    if ((mGenomicDistance->operator[](i+j))->operator[](k).data < 0) {
+                        (mGenomicDistance->operator[](i+j))->operator[](k).data = 0;
+                    }
+                    if ((mGenomicDistance->operator[](i+j))->operator[](k).data > maxValue[omp_get_thread_num()]) {
+                        maxValue[omp_get_thread_num()] = (mGenomicDistance->operator[](i+j))->operator[](k).data;
+                    }
+                }
+            } 
+            else {
+                for(uint32_t k = 0; k < (mGenomicDistance->operator[](i+j))->size(); ++k) {
+                    
+                    (mGenomicDistance->operator[](i+j))->operator[](k).data -= static_cast<int32_t>(changeValues[k]);
+                    if ((mGenomicDistance->operator[](i+j))->operator[](k).data < 0) {
+                        mGenomicDistance->operator[](i+j)->operator[](k).data = 0;
+                    }
+                    if ((mGenomicDistance->operator[](i+j))->operator[](k).data > maxValue[omp_get_thread_num()]) {
+                        maxValue[omp_get_thread_num()] = (mGenomicDistance->operator[](i+j))->operator[](k).data;
                     }
                 }
             }
-        } 
-    }
+        }
+    } 
+    
 
     uint32_t maximalValue = 0;
     for (uint32_t i = 0; i < mNumberOfCores; ++i) {
@@ -359,36 +327,23 @@ void PowerLawNoiseReduction::correctInteractions(float pPower, uint32_t pIterati
         }
     }
     delete [] minValue;
+
+    if (maximalValue < mMaxElement) {
+        maximalValue = mMaxElement;
+    }
+
     int max = 0; 
-    // #pragma omp parallel num_threads(mNumberOfCores)
+    #pragma omp parallel num_threads(mNumberOfCores)
     for (uint32_t i = 0; i < mGenomicDistance->size(); ++i) {
         auto it = mGenomicDistance->begin();
         std::advance(it, i);
-        // double interactionCount = 0;
         for (auto itVector = (it->second)->begin(); itVector != (it->second)->end(); ++itVector)  {
-            // std::cout << "data: " << (*itVector).data << std::endl;
-            // std::cout << (double) mMaxElement * (((double)(*itVector).data) /  maxValue) << std::endl;
-            (*itVector).data = static_cast<int32_t>((float) mMaxElement * (((float)(*itVector).data) /  maximalValue));
+            (*itVector).data = static_cast<int32_t>((float) mMaxElement * (((float)(*itVector).data) /  (float) maximalValue));
             if ((*itVector).data > max) {
                 max = (*itVector).data;
             }
         }
-        // mGenomicDistanceMean->operator[]((it->first)) = interactionCount;
-    }    
-    double foo = 0.025;
-    std::cout << "foo: " << foo << std::endl;;
-    double exponent = 1.2;
-    std::cout << "pow(800, -1.2): ";
-    printf("%lf", std::pow(foo, -exponent));
-    std::cout<< " pow(800, 1.2): ";
-    printf("%lf", std::pow(foo, exponent));
-    std::cout << std::endl; 
-
-    std::cout << "mMaxElement: " << mMaxElement << std::endl;
-
-    std::cout << "maxValue: " << maximalValue << std::endl;
-    std::cout << "minValue: " << minimalValue << std::endl;
-    
-    std::cout << "maxNorm: " << max << std::endl;
+    }  
+    std::cout << "Start powerlaw correction...Done!" << std::endl;
     
 }

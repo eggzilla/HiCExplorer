@@ -18,17 +18,19 @@ class PowerLawNoiseReduction {
         uint32_t mNumberOfCores;
         uint32_t mMaxElement;
         uint32_t mMinElement;
+        uint32_t mRemoveLowInteractionCount;
     
     public:
         PowerLawNoiseReduction();
         PowerLawNoiseReduction(uint32_t pElementCount, uint32_t pMatrixSize, uint32_t pWindowSize,
-                                float pThresholdVariance, float pThresholdAbsMean, uint32_t pNumberOfCores);
+                                float pThresholdVariance, float pThresholdAbsMean, uint32_t pNumberOfCores,
+                                uint32_t pRemoveLowInteractionCount);
         ~PowerLawNoiseReduction();
 
         void parsePythonToCpp(PyObject * pInstancesListObj, PyObject * pFeaturesListObj, 
                                 PyObject * pDataListObj);
         PyObject* parseCppToPython();
         void computeGenomicMean();
-        void correctInteractions(float pPower, uint32_t pIterations);
+        void correctInteractions(float pPower);
 };
 #endif // TYPE_DEFINTIONS_BASIC_H
