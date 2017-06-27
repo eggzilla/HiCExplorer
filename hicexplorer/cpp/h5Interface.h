@@ -15,7 +15,7 @@ class H5Interface {
     public:
         H5Interface(char* pMatrixPath);
         ~H5Interface();
-        std::unordered_map<uint32_t, std::vector<matrixElement>*>* readMatrix();
+        std::unordered_map<uint32_t, std::vector<matrixElement>*>* readMatrix(uint32_t pRemoveLowInteractionCount);
         bool writeMatrix();
 
 };

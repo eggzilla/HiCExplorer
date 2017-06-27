@@ -50,7 +50,7 @@ PowerLawNoiseReduction::PowerLawNoiseReduction(char* pMatrixPath, uint32_t pWind
     // mElementCount = pElementCount;
 
     h5Interface = new H5Interface(pMatrixPath);
-    mGenomicDistance = h5Interface->readMatrix();
+    mGenomicDistance = h5Interface->readMatrix(pRemoveLowInteractionCount);
     mMatrixSize = mGenomicDistance->size();
     mGenomicDistanceMean = new std::vector<double>(mMatrixSize, 0.0);
     mGenomicDistanceTotalInteractionCount = new std::vector<double>(mMatrixSize, 0.0);

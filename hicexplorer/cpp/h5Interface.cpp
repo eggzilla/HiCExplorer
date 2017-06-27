@@ -8,7 +8,7 @@ H5Interface::~H5Interface() {
     // delete mMatrixPath;
 }
 
-std::unordered_map<uint32_t, std::vector<matrixElement>*>* H5Interface::readMatrix() {
+std::unordered_map<uint32_t, std::vector<matrixElement>*>* H5Interface::readMatrix(uint32_t pRemoveLowInteractionCount) {
     
     
     uint64_t test = 0;
@@ -66,7 +66,9 @@ std::unordered_map<uint32_t, std::vector<matrixElement>*>* H5Interface::readMatr
     uint32_t genomicDistance = 0;
     for(uint32_t i = 0; i < sizeIndptr - 1; ++i) {
         for (uint32_t j = indptr[i]; j < indptr[j+1]; ++j) {
-
+            if (data[j] <= pRemoveLowInteractionCount) {
+                continue;
+            }
             matrixElement element;
             element.x = i;
             element.y = indices[j];
@@ -92,6 +94,38 @@ std::unordered_map<uint32_t, std::vector<matrixElement>*>* H5Interface::readMatr
     return genomicDistanceMap;
 }
 
-bool H5Interface::writeMatrix() {
+bool H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixElement>*>* pGenomicDistanceMap, uint32_t pRemoveLowInteractionCount) {
+
+    std::vector<int32_t> indptrVector;
+    std::vector<int32_t> indicesVector;
+    std::vector<int64_t> dataVector;
+    
+    int32_t counter = 0; 
+    int32_t xOld = -1;
+    for (auto it = pGenomicDistanceMap->begin(); it != pGenomicDistanceMap->end(); ++it) {
+        for (auto itVector = (it->second)->begin(); itVector != (it->second)->end(); ++itVector) {
+            if ((*itVector).data <= mRemoveLowInteractionCount) {
+                continue;
+            }
+            if (xOld != (*itVector).x)) {
+                indptrVector.push_back(counter);
+                xOld = (*itVector).x);
+            }
+            indicesVecor.push_back((*itVector).y);
+            dataVector.push_back((*itVector).data);
+            ++counter;          
+        }
+    } 
+    indptrVector.push_back(counter);
+
+    int32_t* indptr = &indptrVector[0];
+    int32_t* indices = &indicesVector[0];
+    int64_t* data = &dataVector[0];
+
+    
+    // PyObject* returnList = PyList_New(3);
+    // PyList_SetItem(returnList, 0, instances);
+    // PyList_SetItem(returnList, 1, features);
+    // PyList_SetItem(returnList, 2, data);
     return false;
 }

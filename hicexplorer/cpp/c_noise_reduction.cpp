@@ -68,7 +68,7 @@ static PyObject* powerLawNoiseReduction_h5(PyObject* self, PyObject* args) {
     // PyObject* returnList = powerLawNoiseReduction->parseCppToPython();
     delete powerLawNoiseReduction;
     // return returnList;
-    return NULL;
+    Py_RETURN_NONE;
 }
 
 static PyMethodDef noiseReduction[] = {
