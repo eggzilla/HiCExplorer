@@ -12,10 +12,10 @@ from setuptools.command.install import install as _install
 from distutils.extension import Extension
 # from distutils.core import setup, Extension
 
-depends_list = ['hicexplorer/cpp/typeDefinitions.h', 'hicexplorer/cpp/powerLawNoiseReduction.h']
-powerLawNoiseReductionModule = Extension('_c_noise_reduction', sources=['hicexplorer/cpp/c_noise_reduction.cpp', 'hicexplorer/cpp/powerLawNoiseReduction.cpp'],
+depends_list = ['hicexplorer/cpp/typeDefinitions.h', 'hicexplorer/cpp/powerLawNoiseReduction.h', 'hicexplorer/cpp/h5Interface.h']
+powerLawNoiseReductionModule = Extension('_c_noise_reduction', sources=['hicexplorer/cpp/c_noise_reduction.cpp', 'hicexplorer/cpp/powerLawNoiseReduction.cpp', 'hicexplorer/cpp/h5Interface.cpp'],
                                          depends=depends_list,
-                                         define_macros=[('OPENMP', None)], extra_link_args=["-lm", "-lrt", "-lgomp"],
+                                         define_macros=[('OPENMP', None)], extra_link_args=["-lm", "-lrt", "-lgomp", "-lhdf5_cpp", "-lhdf5", "-lhdf5_hl"],
                                          extra_compile_args=["-fopenmp", "-O3", "-std=c++11", "-funroll-loops"])
                                         #  extra_link_args=[],
                                         #  extra_compile_args=["-O3", "-std=c++11", "-funroll-loops"])

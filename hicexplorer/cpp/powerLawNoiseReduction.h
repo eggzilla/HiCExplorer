@@ -2,7 +2,7 @@
 #define POWER_LAW_NOISE_REDUCTION_H
 
 #include "typeDefinitions.h"
-
+#include "h5Interface.h"
 
 class PowerLawNoiseReduction {
     private:
@@ -14,16 +14,22 @@ class PowerLawNoiseReduction {
         uint32_t mMatrixSize;
         uint32_t mWindowSize;
         float mThresholdVariance;
-        float mThresholdAbsMean;
         uint32_t mNumberOfCores;
         uint32_t mMaxElement;
         uint32_t mMinElement;
         uint32_t mRemoveLowInteractionCount;
+
+        // char* mMatrixPath;
+
+        H5Interface* h5Interface = NULL;
     
     public:
         PowerLawNoiseReduction();
         PowerLawNoiseReduction(uint32_t pElementCount, uint32_t pMatrixSize, uint32_t pWindowSize,
-                                float pThresholdVariance, float pThresholdAbsMean, uint32_t pNumberOfCores,
+                                float pThresholdVariance, uint32_t pNumberOfCores,
+                                uint32_t pRemoveLowInteractionCount);
+        PowerLawNoiseReduction(char*pMatrixPath, uint32_t pWindowSize,
+                                float pThresholdVariance, uint32_t pNumberOfCores,
                                 uint32_t pRemoveLowInteractionCount);
         ~PowerLawNoiseReduction();
 

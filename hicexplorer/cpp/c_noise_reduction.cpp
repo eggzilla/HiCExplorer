@@ -10,7 +10,6 @@ static PyObject* powerLawNoiseReduction(PyObject* self, PyObject* args) {
 
     uint32_t windowSize;
     float thresholdVariance;
-    float thresholdAbsMean;
     float power;
     PyObject* instancesListObj, *featuresListObj, *dataListObj;
     uint32_t instancesListLength;
@@ -19,12 +18,11 @@ static PyObject* powerLawNoiseReduction(PyObject* self, PyObject* args) {
     // uint32_t iterations;
     uint32_t removeLowInteractionCount;
     
-    if (!PyArg_ParseTuple(args, "O!O!O!IffIIfII", 
+    if (!PyArg_ParseTuple(args, "O!O!O!IfIIfII", 
                             &PyList_Type, &instancesListObj, 
                             &PyList_Type, &featuresListObj,
                             &PyList_Type, &dataListObj,
                             &windowSize, &thresholdVariance,
-                            &thresholdAbsMean,
                             &instancesListLength,
                             &matrixSize,
                             &power, &threads,
@@ -32,7 +30,7 @@ static PyObject* powerLawNoiseReduction(PyObject* self, PyObject* args) {
         return NULL;
     
     PowerLawNoiseReduction* powerLawNoiseReduction = new PowerLawNoiseReduction(instancesListLength, matrixSize,
-                                                            windowSize, thresholdVariance, thresholdAbsMean, threads,
+                                                            windowSize, thresholdVariance, threads,
                                                             removeLowInteractionCount);
     powerLawNoiseReduction->parsePythonToCpp(instancesListObj, featuresListObj, dataListObj);
     // powerLawNoiseReduction->computeGenomicMean();
@@ -42,8 +40,41 @@ static PyObject* powerLawNoiseReduction(PyObject* self, PyObject* args) {
     return returnList;
 }
 
+static PyObject* powerLawNoiseReduction_h5(PyObject* self, PyObject* args) {
+
+    // instances, features, data : list
+    // window size, threshold variance, threshold_abs_mean
+
+    char* matrixPath;
+    uint32_t windowSize;
+    float thresholdVariance;
+    float power;
+    uint32_t threads;
+    uint32_t removeLowInteractionCount;
+    
+    if (!PyArg_ParseTuple(args, "sIffII", 
+                            &matrixPath,
+                            &windowSize, &thresholdVariance,
+                            &power, &threads,
+                            &removeLowInteractionCount))
+        return NULL;
+    
+    PowerLawNoiseReduction* powerLawNoiseReduction = new PowerLawNoiseReduction(matrixPath,
+                                                            windowSize, thresholdVariance, threads,
+                                                            removeLowInteractionCount);
+    // powerLawNoiseReduction->parsePythonToCpp(instancesListObj, featuresListObj, dataListObj);
+    // powerLawNoiseReduction->computeGenomicMean();
+    powerLawNoiseReduction->correctInteractions(power);
+    // PyObject* returnList = powerLawNoiseReduction->parseCppToPython();
+    delete powerLawNoiseReduction;
+    // return returnList;
+    return NULL;
+}
+
 static PyMethodDef noiseReduction[] = {
     {"c_powerLawNoiseReduction", powerLawNoiseReduction, METH_VARARGS, "Calculate a hash value."},
+    {"c_powerLawNoiseReduction_h5", powerLawNoiseReduction_h5, METH_VARARGS, "Calculate a hash value."},
+    
     {NULL, NULL, 0, NULL}
 };
 

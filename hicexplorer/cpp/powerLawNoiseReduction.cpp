@@ -23,8 +23,7 @@ inline double fastPow(double a, double b) {
 PowerLawNoiseReduction::PowerLawNoiseReduction(){};
 PowerLawNoiseReduction::PowerLawNoiseReduction(uint32_t pElementCount, uint32_t pMatrixSize, 
                                                 uint32_t pWindowSize, float pThresholdVariance, 
-                                                float pThresholdAbsMean, uint32_t pNumberOfCores,
-                                                uint32_t pRemoveLowInteractionCount) {
+                                                uint32_t pNumberOfCores, uint32_t pRemoveLowInteractionCount) {
     mGenomicDistance = new std::unordered_map<uint32_t, std::vector<matrixElement>*>();
     for (uint32_t i = 0; i < pMatrixSize; ++i) {
         mGenomicDistance->operator[](i) = new std::vector<matrixElement>();
@@ -35,7 +34,29 @@ PowerLawNoiseReduction::PowerLawNoiseReduction(uint32_t pElementCount, uint32_t 
     mMatrixSize = pMatrixSize;
     mWindowSize = pWindowSize;
     mThresholdVariance = pThresholdVariance;
-    mThresholdAbsMean = pThresholdAbsMean;
+    mNumberOfCores = pNumberOfCores;
+    mMaxElement = 0;
+    mMinElement = std::numeric_limits<uint32_t>::max();
+    mRemoveLowInteractionCount = pRemoveLowInteractionCount;
+    // readWriteH5 = NULL;
+}
+
+PowerLawNoiseReduction::PowerLawNoiseReduction(char* pMatrixPath, uint32_t pWindowSize,
+                                float pThresholdVariance, uint32_t pNumberOfCores,
+                                uint32_t pRemoveLowInteractionCount) {
+
+    // constructor to be used in case that the h5 file is read in c++ and not in python
+    // be careful, a few variables are not initalized because of missing informaiton stored in h5!
+    // mElementCount = pElementCount;
+
+    h5Interface = new H5Interface(pMatrixPath);
+    mGenomicDistance = h5Interface->readMatrix();
+    mMatrixSize = mGenomicDistance->size();
+    mGenomicDistanceMean = new std::vector<double>(mMatrixSize, 0.0);
+    mGenomicDistanceTotalInteractionCount = new std::vector<double>(mMatrixSize, 0.0);
+
+    mWindowSize = pWindowSize;
+    mThresholdVariance = pThresholdVariance;
     mNumberOfCores = pNumberOfCores;
     mMaxElement = 0;
     mMinElement = std::numeric_limits<uint32_t>::max();
@@ -43,13 +64,30 @@ PowerLawNoiseReduction::PowerLawNoiseReduction(uint32_t pElementCount, uint32_t 
 }
 
 PowerLawNoiseReduction::~PowerLawNoiseReduction() {
+        std::cout << __LINE__ << std::endl;
+
     #pragma omp parallel for num_threads(mNumberOfCores)
     for (uint32_t i = 0; i < mMatrixSize; ++i) {
         delete mGenomicDistance->operator[](i);
     }
+        std::cout << __LINE__ << std::endl;
+    
     delete mGenomicDistance;
+        std::cout << __LINE__ << std::endl;
+    
     delete mGenomicDistanceMean;
+        std::cout << __LINE__ << std::endl;
+    
     delete mGenomicDistanceTotalInteractionCount;
+        std::cout << __LINE__ << std::endl;
+    
+    if (h5Interface != NULL) {
+        std::cout << __LINE__ << std::endl;
+        
+        delete h5Interface;
+    }
+        std::cout << __LINE__ << std::endl;
+
 }
 
 void PowerLawNoiseReduction::parsePythonToCpp(PyObject * pInstancesListObj, PyObject * pFeaturesListObj, PyObject * pDataListObj) {

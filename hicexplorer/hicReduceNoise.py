@@ -40,19 +40,13 @@ def parse_arguments(args=None):
     parser.add_argument('--window_size',
                         help='',
                         required=False,
-                        default=5,
+                        default=100,
                         type=int
                         )
     parser.add_argument('--threshold_variance',
                         help='',
                         required=False,
                         default=0.1,
-                        type=float
-                        )
-    parser.add_argument('--threshold_abs_mean',
-                        help='',
-                        required=False,
-                        default=100,
                         type=float
                         )
     parser.add_argument('--removeLowInteractionCount',
@@ -64,7 +58,7 @@ def parse_arguments(args=None):
     parser.add_argument('--power',
                         help='',
                         required=False,
-                        default=-3,
+                        default=-2,
                         type=float
                         )
     parser.add_argument('--output',
@@ -80,14 +74,16 @@ class ReduceNoise():
 
     def __init__(self):
         pass
+
     def zero_to_nan(self, values):
         """Replace every 0 with 'nan' and return a copy."""
-        return [float('nan') if x==0 else x for x in values]
+        return [float('nan') if x == 0 else x for x in values]
+
     def calculateDistributionMatrix(self, args=None):
         # print("Calcuate genomic distance for plot...")
         args = parse_arguments().parse_args(args)
-        hicMatrix = hm.hiCMatrix(args.matrix)
-        
+        # hicMatrix = hm.hiCMatrix(args.matrix)
+
         # print(hicMatrix.matrix.shape[0], hicMatrix.matrix.shape[1])
         # distribution = np.zeros(hicMatrix.matrix.shape[0])
         # instances, features = hicMatrix.matrix.nonzero()
@@ -103,34 +99,38 @@ class ReduceNoise():
         # plt.plot(list(range(len(distribution))), distribution)
         # plt.savefig("interactions per genomic distance")
         # print("Calcuate genomic distance for plot...Done!")
-        
+
         # # print(distribution)
         # sliding window over genomic distances
         window_size = args.window_size
         threshold_variance = args.threshold_variance
-        threshold_abs_mean = args.threshold_abs_mean
         power = args.power
         threads = args.threads
         # iterations = args.iterations
         # calculate changes in c++
         print("Start correction in C++...")
-        instances_new, features_new, data_new = _c_noise_reduction.c_powerLawNoiseReduction(hicMatrix.matrix.nonzero()[0].tolist(), hicMatrix.matrix.nonzero()[1].tolist(), hicMatrix.matrix.data.tolist(),
-                                                                                            window_size, threshold_variance, threshold_abs_mean,
-                                                                                            hicMatrix.matrix.count_nonzero(), hicMatrix.matrix.shape[0], power, threads,
-                                                                                            args.removeLowInteractionCount)
+        # instances_new, features_new, data_new = _c_noise_reduction.c_powerLawNoiseReduction(hicMatrix.matrix.nonzero()[0].tolist(), hicMatrix.matrix.nonzero()[1].tolist(), hicMatrix.matrix.data.tolist(),
+        #                                                                                     window_size, threshold_variance, hicMatrix.matrix.count_nonzero(),
+        #                                                                                     hicMatrix.matrix.shape[0], power, threads,
+        #                                                                                     args.removeLowInteractionCount)
+        _c_noise_reduction.c_powerLawNoiseReduction_h5(args.matrix,
+                                                       window_size, threshold_variance,
+                                                       power, threads,
+                                                       args.removeLowInteractionCount)
+
         print("Start correction in C++...Done!")
-                                                                                           
-        hicMatrix.matrix = csr_matrix((data_new, (instances_new, features_new)), shape=(hicMatrix.matrix.shape[0], hicMatrix.matrix.shape[0]))
-        print(len(hicMatrix.matrix.nonzero()[0]), len(hicMatrix.matrix.nonzero()[1]))
+
+        # hicMatrix.matrix = csr_matrix((data_new, (instances_new, features_new)), shape=(hicMatrix.matrix.shape[0], hicMatrix.matrix.shape[0]))
+        # print(len(hicMatrix.matrix.nonzero()[0]), len(hicMatrix.matrix.nonzero()[1]))
         # distribution = np.zeros(hicMatrix.matrix.shape[0])
         # print("Calcuate genomic distance for plot...")
-        
+
         # for i, j in zip(instances_new, features_new):
         #     if i - j < 0:
         #         continue
         #     distribution[abs(i - j)] += hicMatrix.matrix[i, j]
         # distribution = self.zero_to_nan(distribution)
-        
+
         # plt.yscale('log')
         # plt.xscale('log')
         # plt.xlabel("Genomic distances")
@@ -138,8 +138,8 @@ class ReduceNoise():
         # plt.plot(list(range(len(distribution))), distribution)
         # plt.savefig("interactions per genomic distance_corrected")
         # print("Calcuate genomic distance for plot...Done!")
-        
-        hicMatrix.save(args.output)
+
+        # hicMatrix.save(args.output)
         # print(distribution)
 
 
