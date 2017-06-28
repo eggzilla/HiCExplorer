@@ -11,12 +11,14 @@
 class H5Interface {
     private:
         char* mMatrixPath = NULL;
+        char* mMatrixPathOutput = NULL;
     
     public:
-        H5Interface(char* pMatrixPath);
+        H5Interface(char* pMatrixPath, char* pMatrixPathOutput);
         ~H5Interface();
         std::unordered_map<uint32_t, std::vector<matrixElement>*>* readMatrix(uint32_t pRemoveLowInteractionCount);
-        bool writeMatrix();
+        void writeMatrix(std::unordered_map<uint32_t, std::vector<matrixElement>*>* pGenomicDistanceMap, 
+                                uint32_t pRemoveLowInteractionCount);
 
 };
 

@@ -51,20 +51,24 @@ static PyObject* powerLawNoiseReduction_h5(PyObject* self, PyObject* args) {
     float power;
     uint32_t threads;
     uint32_t removeLowInteractionCount;
+    char* matrixPathOutput;
     
-    if (!PyArg_ParseTuple(args, "sIffII", 
+    if (!PyArg_ParseTuple(args, "sIffIIs", 
                             &matrixPath,
                             &windowSize, &thresholdVariance,
                             &power, &threads,
-                            &removeLowInteractionCount))
+                            &removeLowInteractionCount,
+                            &matrixPathOutput))
         return NULL;
     
     PowerLawNoiseReduction* powerLawNoiseReduction = new PowerLawNoiseReduction(matrixPath,
                                                             windowSize, thresholdVariance, threads,
-                                                            removeLowInteractionCount);
+                                                            removeLowInteractionCount,
+                                                            matrixPathOutput);
     // powerLawNoiseReduction->parsePythonToCpp(instancesListObj, featuresListObj, dataListObj);
     // powerLawNoiseReduction->computeGenomicMean();
     powerLawNoiseReduction->correctInteractions(power);
+    powerLawNoiseReduction->writeH5();
     // PyObject* returnList = powerLawNoiseReduction->parseCppToPython();
     delete powerLawNoiseReduction;
     // return returnList;

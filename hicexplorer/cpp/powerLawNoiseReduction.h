@@ -30,12 +30,13 @@ class PowerLawNoiseReduction {
                                 uint32_t pRemoveLowInteractionCount);
         PowerLawNoiseReduction(char*pMatrixPath, uint32_t pWindowSize,
                                 float pThresholdVariance, uint32_t pNumberOfCores,
-                                uint32_t pRemoveLowInteractionCount);
+                                uint32_t pRemoveLowInteractionCount, char* pMatrixPathOutput);
         ~PowerLawNoiseReduction();
 
         void parsePythonToCpp(PyObject * pInstancesListObj, PyObject * pFeaturesListObj, 
                                 PyObject * pDataListObj);
         PyObject* parseCppToPython();
+        void writeH5();
         void computeGenomicMean();
         void correctInteractions(float pPower);
 };

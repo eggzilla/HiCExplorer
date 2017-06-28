@@ -43,13 +43,13 @@ PowerLawNoiseReduction::PowerLawNoiseReduction(uint32_t pElementCount, uint32_t 
 
 PowerLawNoiseReduction::PowerLawNoiseReduction(char* pMatrixPath, uint32_t pWindowSize,
                                 float pThresholdVariance, uint32_t pNumberOfCores,
-                                uint32_t pRemoveLowInteractionCount) {
+                                uint32_t pRemoveLowInteractionCount, char* pMatrixPathOutput) {
 
     // constructor to be used in case that the h5 file is read in c++ and not in python
     // be careful, a few variables are not initalized because of missing informaiton stored in h5!
     // mElementCount = pElementCount;
 
-    h5Interface = new H5Interface(pMatrixPath);
+    h5Interface = new H5Interface(pMatrixPath, pMatrixPathOutput);
     mGenomicDistance = h5Interface->readMatrix(pRemoveLowInteractionCount);
     mMatrixSize = mGenomicDistance->size();
     mGenomicDistanceMean = new std::vector<double>(mMatrixSize, 0.0);
@@ -155,6 +155,9 @@ PyObject* PowerLawNoiseReduction::parseCppToPython() {
     return returnList;
 }
 
+void PowerLawNoiseReduction::writeH5() {
+    h5Interface->writeMatrix(mGenomicDistance, mRemoveLowInteractionCount);
+}
 void PowerLawNoiseReduction::computeGenomicMean() {
 
     #pragma omp parallel for num_threads(mNumberOfCores)

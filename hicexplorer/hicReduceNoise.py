@@ -116,7 +116,8 @@ class ReduceNoise():
         _c_noise_reduction.c_powerLawNoiseReduction_h5(args.matrix,
                                                        window_size, threshold_variance,
                                                        power, threads,
-                                                       args.removeLowInteractionCount)
+                                                       args.removeLowInteractionCount,
+                                                       args.output)
 
         print("Start correction in C++...Done!")
 
