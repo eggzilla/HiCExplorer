@@ -12,7 +12,7 @@ H5Interface::~H5Interface() {
 std::unordered_map<uint32_t, std::vector<matrixElement>*>* H5Interface::readMatrix(uint32_t pRemoveLowInteractionCount) {
     
     
-    uint64_t test = 0;
+    // uint64_t test = 0;
 
     H5::H5File* file = new H5::H5File( mMatrixPath, H5F_ACC_RDONLY );
     H5::Group* group = new H5::Group (file->openGroup("matrix"));
@@ -81,8 +81,6 @@ std::unordered_map<uint32_t, std::vector<matrixElement>*>* H5Interface::readMatr
     }
 
     
-    std::cout << __LINE__ << std::endl;
-
     delete [] data;
     delete [] indices;
     delete [] indptr;
@@ -107,7 +105,6 @@ void H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixEle
     int32_t xOld = -1;
     for (auto it = pGenomicDistanceMap->begin(); it != pGenomicDistanceMap->end(); ++it) {
         for (auto itVector = (it->second)->begin(); itVector != (it->second)->end(); ++itVector) {
-            // std::cout << (*itVector).data << std::endl;
             if ((*itVector).data <= pRemoveLowInteractionCount) {
                 continue;
             }
@@ -131,7 +128,11 @@ void H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixEle
     H5::H5File* file = new H5::H5File(mMatrixPathOutput, H5F_ACC_TRUNC);
     // create group '/matrix'
     H5::Group* groupMatrix = new H5::Group(file->createGroup("/matrix"));
-
+    // create attributes
+    this->createAttribute(groupMatrix, "CLASS", "GROUP");
+    this->createAttribute(groupMatrix, "TITLE", "");
+    this->createAttribute(groupMatrix, "VERSION", "1.0");
+    
     // create 3 dataspaces: /matrix/indptr, /matrix/indices, /matrix/data
     int RANK = 1;
     // indptr
@@ -142,28 +143,46 @@ void H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixEle
     H5::DataSet* datasetIndptr = new H5::DataSet(file->createDataSet("/matrix/indptr", H5::PredType::NATIVE_INT32,
                                                 *dataspaceIndptr));
     datasetIndptr->write(indptr, H5::PredType::NATIVE_INT32);
-    delete dataspaceIndptr;
-    delete datasetIndptr;
 
+    // Create attributes
+    this->createAttribute(datasetIndptr, "CLASS", "CARRAY");
+    this->createAttribute(datasetIndptr, "TITLE", "");
+    this->createAttribute(datasetIndptr, "VERSION", "1.1");
+
+    
     // indices
     dims[0] = indicesVector.size();
-    
     H5::DataSpace* dataspaceIndices = new H5::DataSpace(RANK, dims);
     // create dataset
     H5::DataSet* datasetIndices = new H5::DataSet(file->createDataSet("/matrix/indices", H5::PredType::NATIVE_INT32,
                                                 *dataspaceIndices));
     datasetIndices->write(indices, H5::PredType::NATIVE_INT32);
-    delete dataspaceIndices;
-    delete datasetIndices;
+    
+    // Create attributes
+    this->createAttribute(datasetIndices, "CLASS", "CARRAY");
+    this->createAttribute(datasetIndices, "TITLE", "");
+    this->createAttribute(datasetIndices, "VERSION", "1.1");
+    
 
     // data
     dims[0] = dataVector.size();
-    
     H5::DataSpace* dataspaceData = new H5::DataSpace(RANK, dims);
     // create dataset
     H5::DataSet* datasetData = new H5::DataSet(file->createDataSet("/matrix/data", H5::PredType::NATIVE_INT64,
                                                 *dataspaceData));
     datasetData->write(data, H5::PredType::NATIVE_INT64);
+
+    // Create attributes
+    this->createAttribute(datasetData, "CLASS", "CARRAY");
+    this->createAttribute(datasetData, "TITLE", "");
+    this->createAttribute(datasetData, "VERSION", "1.1");
+
+    delete dataspaceIndices;
+    delete datasetIndices;
+
+    delete dataspaceIndptr;
+    delete datasetIndptr;
+
     delete dataspaceData;
     delete datasetData;
 
@@ -184,5 +203,14 @@ void H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixEle
     // delete fileOld;
     delete file;
     
+    return;
+}
+
+void H5Interface::createAttribute(H5::H5Object* pDataset, std::string pName, std::string pValue) {
+    
+    H5::StrType str_type(0, H5T_VARIABLE);
+    H5::DataSpace att_space(H5S_SCALAR);
+    H5::Attribute att = pDataset->createAttribute( pName, str_type, att_space );
+    att.write( str_type, pValue );
     return;
 }

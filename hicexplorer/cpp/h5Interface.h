@@ -19,6 +19,7 @@ class H5Interface {
         std::unordered_map<uint32_t, std::vector<matrixElement>*>* readMatrix(uint32_t pRemoveLowInteractionCount);
         void writeMatrix(std::unordered_map<uint32_t, std::vector<matrixElement>*>* pGenomicDistanceMap, 
                                 uint32_t pRemoveLowInteractionCount);
+        void createAttribute(H5::H5Object* pDataset, std::string pName, std::string pValue);
 
 };
 
