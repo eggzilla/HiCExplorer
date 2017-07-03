@@ -162,7 +162,7 @@ void H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixEle
     this->createAttribute(datasetIndices, "CLASS", "CARRAY");
     this->createAttribute(datasetIndices, "TITLE", "");
     this->createAttribute(datasetIndices, "VERSION", "1.1");
-    
+
 
     // data
     dims[0] = dataVector.size();
@@ -190,9 +190,9 @@ void H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixEle
     // copy old content of /intervals
     // create group intervals
     // create dataspaces for 
-    // H5::H5File* fileOld = new H5::H5File( mMatrixPath, H5F_ACC_RDONLY );
-    // H5::Group* groupIntervalsOld = new H5::Group (file->openGroup("intervals"));
-
+    H5::H5File* fileOld = new H5::H5File( mMatrixPath, H5F_ACC_RDONLY );
+    H5::Group* groupIntervalsOld = new H5::Group (file->openGroup("intervals"));
+    H5::Group* groupIntervalsCopy = groupIntervalsOld->copy();
     // H5::Group* groupIntervalsCopy = new H5::Group(groupIntervalsOld);
     // H5::Group* groupIntervalsNew = new H5::Group(file->createGroup(groupIntervalsNew->getId()));
 
