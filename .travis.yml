@@ -33,15 +33,19 @@ before_install:
 
 # Install packages
 install:
-  - conda install --yes python=$TRAVIS_PYTHON_VERSION flake8 pytest
-  - conda install --yes -c bioconda --file requirements.txt
+  - conda create --name __hicexplorer@1.7.3 --file requirements.txt
+  - source activate  __hicexplorer@1.7.3
+  - conda install --yes flake8 pytest
   - python setup.py install
+  - source deactivate __hicexplorer@1.7.3
 
 # command to run tests
 script:
   - flake8 . --exclude=.venv,.build,planemo_test_env,build --ignore=E501,F403,E402,F999,F405,E712
   - export owd=`pwd`
+  - source activate __hicexplorer@1.7.3
   - py.test hicexplorer --doctest-modules
   - cd ${owd}
   - echo ${owd}
   - if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then bash .planemo.sh ; fi
+  - source deactivate __hicexplorer@1.7.3
