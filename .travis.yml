@@ -33,7 +33,7 @@ before_install:
 
 # Install packages
 install:
-  - conda create --name __hicexplorer@1.7.3 --file requirements.txt
+  - conda create -c bioconda --name __hicexplorer@1.7.3 --file requirements.txt
   - source activate  __hicexplorer@1.7.3
   - conda install --yes flake8 pytest
   - python setup.py install
