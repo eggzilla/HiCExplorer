@@ -25,8 +25,6 @@ std::unordered_map<uint32_t, std::vector<matrixElement>*>* H5Interface::readMatr
     hsize_t* dims = new hsize_t[1];
     hsize_t* maxdims = new hsize_t[1];
     int ndims = H5Sget_simple_extent_dims(dspace, dims, maxdims);
-    // std::cout << "ndims: " << ndims << " dims: " << dims[0] << " maxdims: " << maxdims[0]<< std::endl;
-    // how big and which datatype?
     size_t sizeData = dims[0];
     int64_t* data = new int64_t [sizeData];
     dataH5->read(data, H5::PredType::NATIVE_INT64);
@@ -191,16 +189,132 @@ void H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixEle
     // create group intervals
     // create dataspaces for 
     H5::H5File* fileOld = new H5::H5File( mMatrixPath, H5F_ACC_RDONLY );
-    H5::Group* groupIntervalsOld = new H5::Group (file->openGroup("intervals"));
-    H5::Group* groupIntervalsCopy = groupIntervalsOld->copy();
-    // H5::Group* groupIntervalsCopy = new H5::Group(groupIntervalsOld);
-    // H5::Group* groupIntervalsNew = new H5::Group(file->createGroup(groupIntervalsNew->getId()));
+    H5::Group* groupIntervalsOld = new H5::Group (fileOld->openGroup("/intervals"));
 
+
+    H5::Group* groupIntervals = new H5::Group(file->createGroup("/intervals"));
+    this->createAttribute(groupIntervals, "CLASS", "GROUP");
+    this->createAttribute(groupIntervals, "TITLE", "");
+    this->createAttribute(groupIntervals, "VERSION", "1.0");
     
-    // delete groupIntervalsNew;
-    // delete groupIntervalsCopy;
-    // delete groupIntervalsOld;
-    // delete fileOld;
+
+    // get data set '/intervals/end_list'
+    H5::DataSet* data_end_list = new H5::DataSet(groupIntervalsOld->openDataSet("end_list"));
+    hid_t id = data_end_list->getId();
+    hid_t dspace = H5Dget_space(id);
+    hsize_t* maxdims = new hsize_t[1];
+    int ndims = H5Sget_simple_extent_dims(dspace, dims, maxdims);
+    size_t sizeData = dims[0];
+    int64_t* end_list = new int64_t [sizeData];
+    data_end_list->read(end_list, H5::PredType::NATIVE_INT64);
+
+    H5::DataSpace* dataspace_end_list = new H5::DataSpace(RANK, dims);
+    // create dataset
+    H5::DataSet* dataset_end_list = new H5::DataSet(file->createDataSet("/intervals/end_list", H5::PredType::NATIVE_INT64,
+                                                *dataspace_end_list));
+    dataset_end_list->write(end_list, H5::PredType::NATIVE_INT64);
+    // Create attributes
+    this->createAttribute(dataset_end_list, "CLASS", "CARRAY");
+    this->createAttribute(dataset_end_list, "TITLE", "");
+    this->createAttribute(dataset_end_list, "VERSION", "1.1");
+    delete end_list;
+    delete dataset_end_list;
+    delete dataspace_end_list;
+    delete data_end_list;
+
+
+
+    // get data set '/intervals/extra_list'
+    H5::DataSet* data_extra_list = new H5::DataSet(groupIntervalsOld->openDataSet("extra_list"));
+    id = data_extra_list->getId();
+    dspace = H5Dget_space(id);
+    // hsize_t* dims = new hsize_t[1];
+    // maxdims = new hsize_t[1];
+    ndims = H5Sget_simple_extent_dims(dspace, dims, maxdims);
+    sizeData = dims[0];
+    int64_t* extra_list = new int64_t [sizeData];
+    data_end_list->read(extra_list, H5::PredType::NATIVE_INT64);
+
+    H5::DataSpace* dataspace_extra_list = new H5::DataSpace(RANK, dims);
+    // create dataset
+    H5::DataSet* dataset_extra_list = new H5::DataSet(file->createDataSet("/intervals/extra_list", H5::PredType::NATIVE_INT64,
+                                                *dataspace_extra_list));
+    dataset_extra_list->write(end_list, H5::PredType::NATIVE_INT64);
+    // Create attributes
+    this->createAttribute(dataset_extra_list, "CLASS", "CARRAY");
+    this->createAttribute(dataset_extra_list, "TITLE", "");
+    this->createAttribute(dataset_extra_list, "VERSION", "1.1");
+    delete extra_list;
+    delete dataset_extra_list;
+    delete dataspace_extra_list;
+    delete data_extra_list;
+    
+    H5::DataSet* data_start_list = new H5::DataSet(groupIntervalsOld->openDataSet("start_list"));
+    id = data_start_list->getId();
+    dspace = H5Dget_space(id);
+    ndims = H5Sget_simple_extent_dims(dspace, dims, maxdims);
+    sizeData = dims[0];
+    std::cout << "sizeData foo: " << sizeData << std::endl;
+    int64_t* start_list = new int64_t [sizeData];
+    data_start_list->read(extra_list, H5::PredType::NATIVE_INT64);
+
+
+    H5::DataSpace* dataspace_start_list = new H5::DataSpace(RANK, dims);
+    // create dataset
+    H5::DataSet* dataset_start_list = new H5::DataSet(file->createDataSet("/intervals/start_list", H5::PredType::NATIVE_INT64,
+                                                *dataspace_start_list));
+    dataset_start_list->write(start_list, H5::PredType::NATIVE_INT64);
+    // Create attributes
+    this->createAttribute(dataset_start_list, "CLASS", "CARRAY");
+    this->createAttribute(dataset_start_list, "TITLE", "");
+    this->createAttribute(dataset_start_list, "VERSION", "1.1");
+    delete start_list;
+    delete dataspace_start_list;
+    delete dataset_start_list;
+    delete data_start_list;
+
+
+    // get data set '/intervals/chr_list'
+    H5::DataSet* data_chr_list = new H5::DataSet(groupIntervalsOld->openDataSet("chr_list"));
+    id = data_chr_list->getId();
+    dspace = H5Dget_space(id);
+    ndims = H5Sget_simple_extent_dims(dspace, dims, maxdims);
+    sizeData = dims[0];
+    std::cout << "ndims" << ndims << std::endl;
+    std::cout << "sizeData: " << sizeData << std::endl;
+    // char* rdata = new char[sizeData*22];
+    H5::DataType dtype = data_chr_list->getDataType();
+    // std::cout << "dataType: " << dtype.getId() << std::endl;
+    // // char** chr_list = new char* [sizeData];
+    // char** chr_list = new char* [sizeData];
+    
+    // data_chr_list->read(chr_list, dtype);
+    // std::cout << "foo" << std::endl;
+    char *chr_list = NULL;
+    H5::StrType vlst(0, H5T_VARIABLE);
+    // Read and verify the dataset string as a string of chars.
+    data_chr_list->read(&chr_list, vlst);
+    // HDfree(chr_list); 
+
+    H5::DataSpace* dataspace_chr_list = new H5::DataSpace(RANK, dims);
+    // // create dataset
+    H5::DataSet* dataset_chr_list = new H5::DataSet(file->createDataSet("/intervals/chr_list", dtype,
+                                                *dataspace_chr_list));
+    dataset_chr_list->write(chr_list, dtype);
+    // // Create attributes
+    this->createAttribute(dataset_chr_list, "CLASS", "CARRAY");
+    this->createAttribute(dataset_chr_list, "TITLE", "");
+    this->createAttribute(dataset_chr_list, "VERSION", "1.1");
+    // delete chr_list;
+    // delete dataset_chr_list;
+    // delete dataspace_chr_list;
+    // delete data_chr_list;
+
+    delete maxdims;
+    // delete ndims;
+    delete fileOld;
+    delete groupIntervalsOld;
+    delete groupIntervals;
     delete file;
     
     return;
