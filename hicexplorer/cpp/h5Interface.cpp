@@ -282,18 +282,18 @@ void H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixEle
     sizeData = dims[0];
     std::cout << "ndims" << ndims << std::endl;
     std::cout << "sizeData: " << sizeData << std::endl;
-    // char* rdata = new char[sizeData*22];
+    char* chr_list = new char[sizeData*23];
     H5::DataType dtype = data_chr_list->getDataType();
     // std::cout << "dataType: " << dtype.getId() << std::endl;
     // // char** chr_list = new char* [sizeData];
     // char** chr_list = new char* [sizeData];
     
-    // data_chr_list->read(chr_list, dtype);
+    data_chr_list->read(chr_list, dtype);
     // std::cout << "foo" << std::endl;
-    char *chr_list = NULL;
-    H5::StrType vlst(0, H5T_VARIABLE);
+    // char *chr_list = NULL;
+    // H5::StrType vlst(0, H5T_VARIABLE);
     // Read and verify the dataset string as a string of chars.
-    data_chr_list->read(&chr_list, vlst);
+    // data_chr_list->read(&chr_list, vlst);
     // HDfree(chr_list); 
 
     H5::DataSpace* dataspace_chr_list = new H5::DataSpace(RANK, dims);
