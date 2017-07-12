@@ -16,7 +16,7 @@ std::unordered_map<uint32_t, std::vector<matrixElement>*>* H5Interface::readMatr
 
     H5::H5File* file = new H5::H5File( mMatrixPath, H5F_ACC_RDONLY );
     H5::Group* group = new H5::Group (file->openGroup("matrix"));
-    std::cout << __LINE__ << std::endl;
+    // std::cout << __LINE__ << std::endl;
 
     // data vector
     H5::DataSet* dataH5 = new H5::DataSet(group->openDataSet("data"));
@@ -42,7 +42,7 @@ std::unordered_map<uint32_t, std::vector<matrixElement>*>* H5Interface::readMatr
     int32_t* indices = new int32_t [sizeIndices];
     indicesH5->read(indices, H5::PredType::NATIVE_INT32);
     
-    std::cout << __LINE__ << std::endl;
+    // std::cout << __LINE__ << std::endl;
     
     // index location of next line
     H5::DataSet *indptrH5 = new H5::DataSet(group->openDataSet("indptr"));
@@ -55,13 +55,13 @@ std::unordered_map<uint32_t, std::vector<matrixElement>*>* H5Interface::readMatr
    
     int32_t* indptr = new int32_t [sizeIndptr];
     indptrH5->read(indptr, H5::PredType::NATIVE_INT32);
-    std::cout << __LINE__ << std::endl;
+    // std::cout << __LINE__ << std::endl;
 
     std::unordered_map<uint32_t, std::vector<matrixElement>*>* genomicDistanceMap = new std::unordered_map<uint32_t, std::vector<matrixElement>*>();
     for (uint32_t i = 0; i < sizeIndptr; ++i) {
         genomicDistanceMap->operator[](i) = new std::vector<matrixElement>();
     }
-    std::cout << __LINE__ << std::endl;
+    // std::cout << __LINE__ << std::endl;
     uint32_t genomicDistance = 0;
     for(uint32_t i = 0; i < sizeIndptr - 1; ++i) {
         for (uint32_t j = indptr[i]; j < indptr[j+1]; ++j) {
@@ -103,7 +103,7 @@ void H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixEle
     int32_t xOld = -1;
     for (auto it = pGenomicDistanceMap->begin(); it != pGenomicDistanceMap->end(); ++it) {
         for (auto itVector = (it->second)->begin(); itVector != (it->second)->end(); ++itVector) {
-            if ((*itVector).data <= pRemoveLowInteractionCount) {
+            if ((*itVector).data <= pRemoveLowInteractionCount || (*itVector).data <= 0) {
                 continue;
             }
             if (xOld != (*itVector).x) {
@@ -280,11 +280,15 @@ void H5Interface::writeMatrix(std::unordered_map<uint32_t, std::vector<matrixEle
     dspace = H5Dget_space(id);
     ndims = H5Sget_simple_extent_dims(dspace, dims, maxdims);
     sizeData = dims[0];
-    std::cout << "ndims" << ndims << std::endl;
-    std::cout << "sizeData: " << sizeData << std::endl;
-    char* chr_list = new char[sizeData*23];
+    hsize_t lnSize = data_chr_list->getStorageSize();
+    // std::cout << "lnSIze: " << lnSize << std::endl;
+    
+    char* chr_list = new char[sizeData * 21];
     H5::DataType dtype = data_chr_list->getDataType();
-    // std::cout << "dataType: " << dtype.getId() << std::endl;
+    // std::cout << "dims: " << dims[0] << std::endl;
+    // std::cout << "maxdims: " << maxdims[0] << std::endl;
+    
+    // data_chr_list->get
     // // char** chr_list = new char* [sizeData];
     // char** chr_list = new char* [sizeData];
     
