@@ -75,9 +75,46 @@ static PyObject* powerLawNoiseReduction_h5(PyObject* self, PyObject* args) {
     Py_RETURN_NONE;
 }
 
+static PyObject* powerLawNoiseReduction_h5_2(PyObject* self, PyObject* args) {
+
+    // instances, features, data : list
+    // window size, threshold variance, threshold_abs_mean
+
+    char* matrixPath;
+    uint32_t windowSize;
+    float thresholdVariance;
+    float power;
+    uint32_t threads;
+    uint32_t removeLowInteractionCount;
+    char* matrixPathOutput;
+    
+    if (!PyArg_ParseTuple(args, "sIffIIs", 
+                            &matrixPath,
+                            &windowSize, &thresholdVariance,
+                            &power, &threads,
+                            &removeLowInteractionCount,
+                            &matrixPathOutput))
+        return NULL;
+    
+    PowerLawNoiseReduction* powerLawNoiseReduction = new PowerLawNoiseReduction(matrixPath,
+                                                            windowSize, thresholdVariance, threads,
+                                                            removeLowInteractionCount,
+                                                            matrixPathOutput);
+    // powerLawNoiseReduction->parsePythonToCpp(instancesListObj, featuresListObj, dataListObj);
+    // powerLawNoiseReduction->computeGenomicMean();
+    powerLawNoiseReduction->correctInteractions(power);
+    // powerLawNoiseReduction->writeH5();
+    // PyObject* returnList = powerLawNoiseReduction->parseCppToPython();
+    PyObject* returnList = powerLawNoiseReduction->parseCppToPython();
+    delete powerLawNoiseReduction;
+    return returnList;
+}
+
 static PyMethodDef noiseReduction[] = {
     {"c_powerLawNoiseReduction", powerLawNoiseReduction, METH_VARARGS, "Calculate a hash value."},
     {"c_powerLawNoiseReduction_h5", powerLawNoiseReduction_h5, METH_VARARGS, "Calculate a hash value."},
+    {"c_powerLawNoiseReduction_h5_2", powerLawNoiseReduction_h5_2, METH_VARARGS, "Calculate a hash value."},
+    
     
     {NULL, NULL, 0, NULL}
 };

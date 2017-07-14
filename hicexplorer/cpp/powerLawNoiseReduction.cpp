@@ -379,12 +379,18 @@ void PowerLawNoiseReduction::correctInteractions(float pPower) {
         auto it = mGenomicDistance->begin();
         std::advance(it, i);
         for (auto itVector = (it->second)->begin(); itVector != (it->second)->end(); ++itVector)  {
-            (*itVector).data = static_cast<int32_t>((float) mMaxElement * (((float)(*itVector).data) /  (float) maximalValue));
+            int32_t new_data = static_cast<int32_t>((float) mMaxElement * (((float)(*itVector).data) /  (float) maximalValue));
+            if (new_data < 0) {
+                (*itVector).data = 0;
+                continue;
+            }
+            (*itVector).data = new_data;
             if ((*itVector).data > max) {
                 max = (*itVector).data;
             }
         }
     }  
+    
     std::cout << "Start powerlaw correction...Done!" << std::endl;
     
 }
