@@ -580,7 +580,9 @@ def enlarge_bins(bin_intervals, chrom_sizes):
 def readBamFiles(pFileOneIterator, pFileTwoIterator, pNumberOfItemsPerBuffer, pSkipDuplicationCheck, pReadPosMatrix, pRefId2name, pMinMappingQuality):
     """Read the two bam input files into n buffers each with pNumberOfItemsPerBuffer
         with n = number of processes. The duplication check is handled here too."""
-    buffer_mate1 = []
+    # buffer_mate1 = [None] * pNumberOfItemsPerBuffer
+    # buffer_mate2 = [None] * pNumberOfItemsPerBuffer
+    buffer_mate1 = [] 
     buffer_mate2 = []
     duplicated_pairs = 0
     one_mate_unmapped = 0
@@ -668,10 +670,18 @@ def readBamFiles(pFileOneIterator, pFileTwoIterator, pNumberOfItemsPerBuffer, pS
                                             mate2.pos):
                 duplicated_pairs += 1
                 continue
+        # buffer_mate1[j] = mate1
+        # buffer_mate2[j] = mate2
+
         buffer_mate1.append(mate1)
         buffer_mate2.append(mate2)
+        
         j += 1
 
+    # if pNumberOfItemsPerBuffer != j:
+    #     buffer_mate1 = filter(None, buffer_mate1)
+    #     buffer_mate2 = filter(None, buffer_mate2)
+        
     if all_data_read and len(buffer_mate1) != 0 and len(buffer_mate2) != 0:
         return buffer_mate1, buffer_mate2, True, duplicated_pairs, one_mate_unmapped, one_mate_not_unique, one_mate_low_quality, iter_num - len(buffer_mate1)
     if all_data_read and len(buffer_mate1) == 0 or len(buffer_mate2) == 0:
@@ -978,38 +988,40 @@ def process_data(pMateBuffer1, pMateBuffer2, pMinMappingQuality,
                     count_left, count_right, inter_chromosomal, short_range, long_range, pair_added, len(pMateBuffer1), pResultIndex, pCounter, out_bam_index_buffer]])
     return
 
+def write_bam(pQueue,  pQueueDone, pOutputFile, pTemplate):
+    out_bam_file = pysam.Samfile(os.path.join(pOutputFile), 'wb', template=pTemplate)
 
-# def write_bam(pTemplate, pOutputFileBufferDir, pUniqueHashForBam):
-#     try:
-#         out_bam = pysam.Samfile(os.path.join(
-#             pOutputFileBufferDir, pUniqueHashForBam + ".bam"), 'wb', template=pTemplate)
-#     except:
-#         exit("Could not create buffered file: {}".format(
-#             os.path.join(pOutputFileBufferDir, pUniqueHashForBam + ".bam")))
-#     counter = 0
-#     while not os.path.isfile(os.path.join(pOutputFileBufferDir, pUniqueHashForBam + '.done_processing')) \
-#             or os.path.isfile(os.path.join(pOutputFileBufferDir, str(counter) + "_" + pUniqueHashForBam + '.bam_done')):
-#         if os.path.isfile(os.path.join(pOutputFileBufferDir, str(counter) + "_" + pUniqueHashForBam + '.bam_done')):
-#             out_put_threads = pysam.Samfile(os.path.join(
-#                 pOutputFileBufferDir, str(counter) + "_" + pUniqueHashForBam + '.bam'), 'rb')
-#             while True:
-#                 try:
-#                     data = out_put_threads.next()
-#                 except StopIteration:
-#                     break
-#                 out_bam.write(data)
-#             out_put_threads.close()
-#             os.remove(os.path.join(pOutputFileBufferDir, str(
-#                 counter) + "_" + pUniqueHashForBam + '.bam'))
-#             os.remove(os.path.join(pOutputFileBufferDir, str(
-#                 counter) + "_" + pUniqueHashForBam + '.bam_done'))
-#             counter += 1
-#         else:
-#             time.sleep(3)
+    while True:
+        task = pQueue.get()
+        stop = 0
+        if task == "Terminate":
+            out_bam_file.close()
+            pQueueDone.put(True)  
+            break
+        for bam_index in task[2]:
+            mate1 = task[1][bam_index]
+            mate2 = task[1][bam_index]
 
-#     out_bam.close()
-#     os.remove(os.path.join(pOutputFileBufferDir,
-#                            pUniqueHashForBam + '.done_processing'))
+            mate1.flag |= 0x1
+            mate2.flag |= 0x1
+
+            # set one read as the first in pair and the
+            # other as second
+            mate1.flag |= 0x40
+            mate2.flag |= 0x80
+
+            # set chrom of mate
+            mate1.mrnm = mate2.rname
+            mate2.mrnm = mate1.rname
+
+            # set position of mate
+            mate1.mpos = mate2.pos
+            mate2.mpos = mate1.pos
+
+            out_bam_file.write(mate1)
+            out_bam_file.write(mate2)
+
+    return
 
 
 def main(args=None):
@@ -1068,7 +1080,7 @@ def main(args=None):
     unique_hash_for_bam = str(hash(time.time()))
     if args.outBam:
         args.outBam.close()
-        out_bam_file =  pysam.Samfile(args.outBam.name, 'wb', template=str1)
+        # out_bam_file =  pysam.Samfile(args.outBam.name, 'wb', template=str1)
 
     chrom_sizes = get_chrom_sizes(str1)
 
@@ -1139,7 +1151,7 @@ def main(args=None):
     coverage = Array(c_uint, number_of_elements_coverage)
 
     # define global shared ctypes arrays for row, col and data
-    args.threads = args.threads - 1
+    args.threads = args.threads - 2
     row = [None] * args.threads
     col = [None] * args.threads
     data = [None] * args.threads
@@ -1193,6 +1205,13 @@ def main(args=None):
     #     process_write_bam_file = Process(target=write_bam, kwargs=dict(
     #         pTemplate=str1, pOutputFileBufferDir=outputFileBufferDir, pUniqueHashForBam=unique_hash_for_bam))
     #     process_write_bam_file.start()
+    if args.outBam:
+        process_write_bam_file_queue = Queue()
+        process_write_bam_file_queue_done = Queue()
+        
+        process_write_bam_file = Process(target=write_bam, kwargs=dict(pQueue=process_write_bam_file_queue, pQueueDone=process_write_bam_file_queue_done, pOutputFile=args.outBam.name, pTemplate=str1))
+        # process_write_bam_file.daemon = True
+        process_write_bam_file.start()
     while not all_data_processed or not all_threads_done:
 
         for i in xrange(args.threads):
@@ -1279,28 +1298,9 @@ def main(args=None):
                     pair_added += result[0][15]
                     iter_num += result[0][16]
 
-                for bam_index in result[0][19]:
-                    mate1 = buffer_workers1[i][bam_index]
-                    mate2 = buffer_workers2[i][bam_index]
-
-                    mate1.flag |= 0x1
-                    mate2.flag |= 0x1
-
-                    # set one read as the first in pair and the
-                    # other as second
-                    mate1.flag |= 0x40
-                    mate2.flag |= 0x80
-
-                    # set chrom of mate
-                    mate1.mrnm = mate2.rname
-                    mate2.mrnm = mate1.rname
-
-                    # set position of mate
-                    mate1.mpos = mate2.pos
-                    mate2.mpos = mate1.pos
-
-                    out_bam_file.write(mate1)
-                    out_bam_file.write(mate2)
+                if args.outBam:
+                    process_write_bam_file_queue.put([buffer_workers1[i], buffer_workers2[i], result[0][19]])
+               
 
                 buffer_workers1[i] = None
                 buffer_workers2[i] = None
@@ -1309,13 +1309,7 @@ def main(args=None):
                 process[i].terminate()
                 process[i] = None
                 thread_done[i] = True
-                # if args.outBam:
-                #     try:
-                #         open(os.path.join(outputFileBufferDir, str(
-                #             result[0][-1]) + "_" + unique_hash_for_bam + '.bam_done'), 'a').close()
-                #     except:
-                #         exit("Could not create {}".format(os.path.join(outputFileBufferDir, str(
-                #             result[0][-1]) + "_" + unique_hash_for_bam + '.bam_done')))
+              
                 # caused by the architecture I try to display this output
                 # information after +-1e5 of 1e6 reads.
                 if iter_num % 1e6 < 100000:
@@ -1335,6 +1329,7 @@ def main(args=None):
                     break
             elif all_data_processed and queue[i] is None:
                 thread_done[i] = True
+
             else:
                 time.sleep(1)
 
@@ -1344,19 +1339,31 @@ def main(args=None):
                 if not thread:
                     all_threads_done = False
 
+   
+    
+    if args.outBam:
+        process_write_bam_file_queue.put("Terminate")
+
+        while True:
+            write_bam_done = process_write_bam_file_queue_done.get()
+            if write_bam_done:
+                break
+        print "wait for bam merging process to finish"
+        process_write_bam_file.join()
+        process_write_bam_file.terminate()
+        print "wait for bam merging process to finish...DONE!"
+        
+    #     open(os.path.join(outputFileBufferDir,
+    #                       unique_hash_for_bam + '.done_processing'), 'a').close()
+    #     print "wait for bam merging process to finish"
+    #     process_write_bam_file.join()
+
+
     # the resulting matrix is only filled unevenly with some pairs
     # int the upper triangle and others in the lower triangle. To construct
     # the definite matrix I add the values from the upper and lower triangles
     # and subtract the diagonal to avoid double counting it.
     # The resulting matrix is symmetric.
-    if args.outBam:
-        out_bam_file.close()
-    #     open(os.path.join(outputFileBufferDir,
-    #                       unique_hash_for_bam + '.done_processing'), 'a').close()
-    #     print "wait for bam merging process to finish"
-    #     process_write_bam_file.join()
-    #     print "wait for bam merging process to finish...DONE!"
-
     dia = dia_matrix(([hic_matrix.diagonal()], [0]), shape=hic_matrix.shape)
     hic_matrix = hic_matrix + hic_matrix.T - dia
     # extend bins such that they are next to each other
