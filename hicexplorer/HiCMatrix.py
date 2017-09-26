@@ -44,12 +44,13 @@ class hiCMatrix:
     """
 
     def __init__(self, matrixFile=None, file_format=None, skiprows=None, chrnameList=None, bplimit=None,
-                 cooler_only_init=None):
+                 cooler_only_init=None, pThreads=None):
         self.correction_factors = None  # this value is set in case a matrix was iteratively corrected
         self.non_homogeneous_warning_already_printed = False
         self.distance_counts = None  # only defined when getCountsByDistance is called
         self.bin_size = None
         self.bin_size_homogeneous = None  # track if the bins are equally spaced or not
+        self.threads = pThreads
 
         if matrixFile:
             self.nan_bins = np.array([])
@@ -121,7 +122,7 @@ class hiCMatrix:
                 exit("matrix format not known.")
 
             self.interval_trees, self.chrBinBoundaries = \
-                self.intervalListToIntervalTree(self.cut_intervals)
+                self.intervalListToIntervalTree(self.cut_intervals, self.threads)
 
 
     def load_cool_only_init(self, pMatrixFile):
@@ -321,7 +322,7 @@ class hiCMatrix:
 
         self.cut_intervals = cut_intervals
         self.interval_trees, self.chrBinBoundaries = \
-            self.intervalListToIntervalTree(self.cut_intervals)
+            self.intervalListToIntervalTree(self.cut_intervals, self.threads)
 
     def setMatrix(self, matrix, cut_intervals):
         """
@@ -340,7 +341,7 @@ class hiCMatrix:
         self.matrix = matrix
         self.cut_intervals = cut_intervals
         self.interval_trees, self.chrBinBoundaries = \
-            self.intervalListToIntervalTree(self.cut_intervals)
+            self.intervalListToIntervalTree(self.cut_intervals, self.threads)
 
     def getBinSize(self):
         """
@@ -1121,7 +1122,7 @@ class hiCMatrix:
         self.numCols = len(sel_id)
 
         self.interval_trees, self.chrBinBoundaries = \
-            self.intervalListToIntervalTree(self.cut_intervals)
+            self.intervalListToIntervalTree(self.cut_intervals, self.threads)
         # remove distanceCounts
         try:
             self.distance_counts = None
@@ -1517,7 +1518,7 @@ class hiCMatrix:
             self.nan_bins = []
 
         self.interval_trees, self.chrBinBoundaries = \
-            self.intervalListToIntervalTree(self.cut_intervals)
+            self.intervalListToIntervalTree(self.cut_intervals, self.threads)
 
     def removeBins(self, bin_ids):
         """ given an array of ids, all rows and columns
@@ -1528,7 +1529,7 @@ class hiCMatrix:
         self.matrix = self.matrix[rows, :][:, cols]
         self.cut_intervals = [self.cut_intervals[x] for x in rows]
         self.interval_trees, self.chrBinBoundaries = \
-            self.intervalListToIntervalTree(self.cut_intervals)
+            self.intervalListToIntervalTree(self.cut_intervals, self.threads)
 
     def maskBins(self, bin_ids):
         """
@@ -1584,7 +1585,7 @@ class hiCMatrix:
         self.cut_intervals = new_cut_intervals
 #        self.nan_bins = np.intersect1d(self.nan_bins, rows)
         self.interval_trees, self.chrBinBoundaries = \
-            self.intervalListToIntervalTree(self.cut_intervals)
+            self.intervalListToIntervalTree(self.cut_intervals, self.threads)
 
         if self.correction_factors is not None:
             self.correction_factors = self.correction_factors[rows]
@@ -1607,7 +1608,7 @@ class hiCMatrix:
         self.cut_intervals = new_cut_intervals
 
         self.interval_trees, self.chrBinBoundaries = \
-            self.intervalListToIntervalTree(self.cut_intervals)
+            self.intervalListToIntervalTree(self.cut_intervals, self.threads)
 
         self.nan_bins = np.flatnonzero(self.matrix.sum(0).A == 0)
 
@@ -1639,7 +1640,7 @@ class hiCMatrix:
         self.matrix = self.matrix[rows, :][:, cols]
         self.cut_intervals = [self.orig_cut_intervals[x] for x in rows]
         self.interval_trees, self.chrBinBoundaries = \
-            self.intervalListToIntervalTree(self.cut_intervals)
+            self.intervalListToIntervalTree(self.cut_intervals, self.threads)
         # set as nan_bins the masked bins that were restored
         self.nan_bins = self.orig_bin_ids[M:]
 
@@ -1672,7 +1673,7 @@ class hiCMatrix:
         self.matrix = self.matrix[rows, :][:, cols]
         self.cut_intervals = [self.cut_intervals[x] for x in rows]
         self.interval_trees, self.chrBinBoundaries = \
-            self.intervalListToIntervalTree(self.cut_intervals)
+            self.intervalListToIntervalTree(self.cut_intervals, self.threads)
 
         if self.correction_factors is not None:
             self.correction_factors = self.correction_factors[rows]
@@ -1812,22 +1813,23 @@ class hiCMatrix:
     
 
     @staticmethod
-    def intervalListToIntervalTree(interval_list, pThreads=4):
+    def intervalListToIntervalTree(interval_list, pThreads=None):
         """
         given an ordered list of (chromosome name, start, end)
         this is transformed to a number of interval trees,
         one for each chromosome
         """
-        print("Start intervalListToIntervalTree")
+        print("Start interListToIntervalTree")
         assert len(interval_list) > 0, "List is empty"
         cut_int_tree = {}
         chrbin_boundaries = OrderedDict()
         intval_id = 0
         chr_start_id = 0
         previous_chrom = None
-        pThreads = None
-        if pThreads:
+        # pThreads = None
+        if pThreads and pThreads > 3:
             # multicore case
+            pThreads = pThreads - 1
             process = [None] * pThreads
             queue = [None] * pThreads
             thread_done = [False] * pThreads
@@ -1840,13 +1842,15 @@ class hiCMatrix:
                     chrom_start_list.append(i)
                     previous_chrom = chrom
             chrom_start_list.append(len(interval_list) - 1)
+            
             while chr_element < len(chrom_start_list) - 1 or not all_threads_done:
                 for i in range(pThreads):
                     if queue[i] is None and chr_element < len(chrom_start_list) - 1:
-                    
+                        print("start thread: ", i)
+                        print("data: ", str(chrom_start_list[chr_element]) + " : " + str(chrom_start_list[chr_element + 1]))
                         queue[i] = Queue()
                         process[i] = Process(target=intervalTreeParallel, kwargs=dict(
-                            pInterval_list=interval_list[chrom_start_list[i] : chrom_start_list[i + 1]], 
+                            pInterval_list=interval_list[chrom_start_list[chr_element] : chrom_start_list[chr_element + 1]], 
                             pChrStartId=chrom_start_list[i],
                             pQueue=queue[i]
                         ))
@@ -1855,6 +1859,7 @@ class hiCMatrix:
                         thread_done[i] = False
                     elif queue[i] is not None and not queue[i].empty():
                         cut_int_tree_, chrbin_boundaries_ = queue[i].get()
+                        print("Data received: ", i)
                         cut_int_tree.update(cut_int_tree_)  
                         chrbin_boundaries.update(chrbin_boundaries_)
                         cut_int_tree_ = None
@@ -1865,15 +1870,19 @@ class hiCMatrix:
                         
                         process[i] = None
                         thread_done[i] = True
+                        print("thread done: ", i)
                     elif chr_element >= len(chrom_start_list) - 1 and queue[i] is None:
                             thread_done[i] = True
                     else:
-                        time.sleep(0.1)
-            if chr_element >= len(chromosome_list) - 1:
-                all_threads_done = True
-                for thread in thread_done:
-                    if not thread:
-                        all_threads_done = False
+                        time.sleep(0.01)
+            
+                if chr_element >= len(chrom_start_list) - 1:
+                    print("Some thread is still computing")
+                    all_threads_done = True
+                    for thread in thread_done:
+                        if not thread:
+                            all_threads_done = False
+            print("COmputation done 1882")
         else:
             # single core case
             for intval in interval_list:
@@ -1894,7 +1903,7 @@ class hiCMatrix:
 
                 intval_id += 1
             chrbin_boundaries[chrom] = (chr_start_id, intval_id)
-        print("END intervalListToIntervalTree")
+        print("ENDs interListToIntervalTree")
         
         return cut_int_tree, chrbin_boundaries
     
@@ -2041,18 +2050,19 @@ class hiCMatrix:
         return cool_pandas_bins
 
 def intervalTreeParallel(pInterval_list, pChrStartId, pQueue):
-        cut_int_tree = {}
-        chrbin_boundaries = OrderedDict()
-        intval_id = pChrStartId
-        chr_start_id = pChrStartId
-        cut_int_tree[pInterval_list[0][0]] = IntervalTree()
-        for intval in pInterval_list:
-            chrom, start, end = intval[0:3]
-            start = int(start)
-            end = int(end)        
+    cut_int_tree = {}
+    chrbin_boundaries = OrderedDict()
+    intval_id = pChrStartId
+    chr_start_id = pChrStartId
+    cut_int_tree[pInterval_list[0][0]] = IntervalTree()
+    for intval in pInterval_list:
+        chrom, start, end = intval[0:3]
+        start = int(start)
+        end = int(end)        
 
-            cut_int_tree[chrom].add(Interval(start, end, intval_id))
+        cut_int_tree[chrom].add(Interval(start, end, intval_id))
 
-            intval_id += 1
-        chrbin_boundaries[chrom] = (chr_start_id, intval_id)
-        pQueue.put([cut_int_tree, chrbin_boundaries])
+        intval_id += 1
+    chrbin_boundaries[chrom] = (chr_start_id, intval_id)
+    pQueue.put([cut_int_tree, chrbin_boundaries])
+    return
