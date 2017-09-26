@@ -15,7 +15,8 @@ from scipy.sparse import hstack as sparse_hstack
 from scipy.sparse import triu, tril
 import tables
 from intervaltree import IntervalTree, Interval
-
+import time
+from multiprocessing import Process, Queue
 import gzip
 
 import cooler
@@ -1806,40 +1807,95 @@ class hiCMatrix:
             chrom_sizes[chrom] = end
 
         return chrom_sizes
+    
+    
+    
 
     @staticmethod
-    def intervalListToIntervalTree(interval_list):
+    def intervalListToIntervalTree(interval_list, pThreads=4):
         """
         given an ordered list of (chromosome name, start, end)
         this is transformed to a number of interval trees,
         one for each chromosome
         """
-
+        print("Start intervalListToIntervalTree")
         assert len(interval_list) > 0, "List is empty"
         cut_int_tree = {}
         chrbin_boundaries = OrderedDict()
         intval_id = 0
         chr_start_id = 0
         previous_chrom = None
-        for intval in interval_list:
-            chrom, start, end = intval[0:3]
-            start = int(start)
-            end = int(end)
-            if previous_chrom != chrom:
-                if previous_chrom is None:
+        pThreads = None
+        if pThreads:
+            # multicore case
+            process = [None] * pThreads
+            queue = [None] * pThreads
+            thread_done = [False] * pThreads
+            chr_element = 0
+            chrom_start_list = []
+            all_threads_done = False
+            for i, intval in enumerate(interval_list):
+                chrom = intval[0]
+                if previous_chrom != chrom:
+                    chrom_start_list.append(i)
+                    previous_chrom = chrom
+            chrom_start_list.append(len(interval_list) - 1)
+            while chr_element < len(chrom_start_list) - 1 or not all_threads_done:
+                for i in range(pThreads):
+                    if queue[i] is None and chr_element < len(chrom_start_list) - 1:
+                    
+                        queue[i] = Queue()
+                        process[i] = Process(target=intervalTreeParallel, kwargs=dict(
+                            pInterval_list=interval_list[chrom_start_list[i] : chrom_start_list[i + 1]], 
+                            pChrStartId=chrom_start_list[i],
+                            pQueue=queue[i]
+                        ))
+                        process[i].start()
+                        chr_element += 1
+                        thread_done[i] = False
+                    elif queue[i] is not None and not queue[i].empty():
+                        cut_int_tree_, chrbin_boundaries_ = queue[i].get()
+                        cut_int_tree.update(cut_int_tree_)  
+                        chrbin_boundaries.update(chrbin_boundaries_)
+                        cut_int_tree_ = None
+                        chrbin_boundaries_ = None
+                        queue[i] = None
+                        process[i].join()
+                        process[i].terminate()
+                        
+                        process[i] = None
+                        thread_done[i] = True
+                    elif chr_element >= len(chrom_start_list) - 1 and queue[i] is None:
+                            thread_done[i] = True
+                    else:
+                        time.sleep(0.1)
+            if chr_element >= len(chromosome_list) - 1:
+                all_threads_done = True
+                for thread in thread_done:
+                    if not thread:
+                        all_threads_done = False
+        else:
+            # single core case
+            for intval in interval_list:
+                chrom, start, end = intval[0:3]
+                start = int(start)
+                end = int(end)
+                if previous_chrom != chrom:
+                    if previous_chrom is None:
+                        previous_chrom = chrom
+
+                    chrbin_boundaries[previous_chrom] = \
+                        (chr_start_id, intval_id)
+                    chr_start_id = intval_id
+                    cut_int_tree[chrom] = IntervalTree()
                     previous_chrom = chrom
 
-                chrbin_boundaries[previous_chrom] = \
-                    (chr_start_id, intval_id)
-                chr_start_id = intval_id
-                cut_int_tree[chrom] = IntervalTree()
-                previous_chrom = chrom
+                cut_int_tree[chrom].add(Interval(start, end, intval_id))
 
-            cut_int_tree[chrom].add(Interval(start, end, intval_id))
-
-            intval_id += 1
-        chrbin_boundaries[chrom] = (chr_start_id, intval_id)
-
+                intval_id += 1
+            chrbin_boundaries[chrom] = (chr_start_id, intval_id)
+        print("END intervalListToIntervalTree")
+        
         return cut_int_tree, chrbin_boundaries
     
     @staticmethod
@@ -1983,3 +2039,20 @@ class hiCMatrix:
         cut_intervals_tuple = None
 
         return cool_pandas_bins
+
+def intervalTreeParallel(pInterval_list, pChrStartId, pQueue):
+        cut_int_tree = {}
+        chrbin_boundaries = OrderedDict()
+        intval_id = pChrStartId
+        chr_start_id = pChrStartId
+        cut_int_tree[pInterval_list[0][0]] = IntervalTree()
+        for intval in pInterval_list:
+            chrom, start, end = intval[0:3]
+            start = int(start)
+            end = int(end)        
+
+            cut_int_tree[chrom].add(Interval(start, end, intval_id))
+
+            intval_id += 1
+        chrbin_boundaries[chrom] = (chr_start_id, intval_id)
+        pQueue.put([cut_int_tree, chrbin_boundaries])
