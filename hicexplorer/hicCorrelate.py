@@ -229,8 +229,18 @@ def get_vectors(mat1, mat2):
 
     return values1, values2
 
-def load_cool_matrix(pBinsList, pMatrixList, pQueue):
-    pass
+# def load_cool_matrix(pBinsList, pMatrixList, pQueue, pHic):
+def load_cool_matrix(pMatrixList, pQueue, pHic):
+    data = []
+    row = []
+    col = []
+    for data_ in matrix.values:
+        row.append(data_[0])
+        col.append(data_[1])
+        data.append(data_[2])
+            
+    matrix = csr_matrix((data, (row, col)), shape=(len(data), len(data)))
+
 def main(args=None):
 
     args = parse_arguments().parse_args(args)
@@ -256,69 +266,17 @@ def main(args=None):
     all_nan = []
 
     # parallel load with cooler
-    if args.matrices[0].endwith('.cool'):
+    if args.matrices[0].endswith('.cool'):
         # load each chromosome in parallel. 
         # perform this with DataFrames. 
         # build them after it together
-        if args.threads < 2:
-            exit("At least two threads are necessary. Given are: {}.".format(args.threads))
-        args.threads = args.threads - 1
-        process = [None] * args.threads
-        lock = Lock()
-        queue = [None] * args.threads
-        thread_done = [False] * args.threads
-        all_threads_done = False
-        chromosome_list = []
-        if args.chromosomes: 
-            chromosome_list.extend(args.chromosomes)
-        if args.range:
-            chromosome_list = [s + args.range for s in chromosome_list]
+        _mat = None
+        if args.chromosomes:
+            _mat = hm.hiCMatrix(matrix, chrnameList=args.chromosomes)
 
-        for matrix in args.matrices:
-            hic = hm.hiCMatrix(matrix, cooler_only_init=True)
+        else:
+            _mat = hm.hiCMatrix(matrix)
             
-            if len(chromosome_list) == 0:
-                chromosome_list = hic.cooler_file.chromnames
-            while chr_element < len(chromosome_list) or not all_threads_done:
-                for i in range(args.threads):
-                    if queue[i] is None and chr_element < len(chromosome_list):
-                        queue[i] = Queue()
-                        chromosome = chromosome_list[chr_element]
-                        process[i] = Process(target=load_cool_matrix, kwargs=dict(
-                            pBinsList=hic.load_cool_bins(chromosome),
-                            pMatrixList=hic.load_cool_matrix(chromosome),
-                            pQueue=queue[i]
-                        ))
-                        process[i].start()
-                        chr_element += 1
-                        thread_done[i] = False
-                    elif queue[i] is not None and not queue[i].empty():
-                        # get result and append to 
-                        # hic_mat_list.append(_mat)
-                        _mat = queue[i].get()
-                        if _mat is not None:
-                            hic_mat_list.append(_mat)
-                        queue[i] = None
-                        process[i].join()
-                        process[i].terminate()
-                        
-                        process[i] = None
-                        thread_done[i] = True
-                    elif chr_element >= len(fetch_string) and queue[i] is None:
-                            thread_done[i] = True
-                    else:
-                        time.sleep(0.1)
-                    if chr_element >= len(fetch_string):
-                        all_threads_done = True
-                        for thread in thread_done:
-                            if not thread:
-                                all_threads_done = False
-
-
-                process = [None] * args.threads
-                queue = [None] * args.threads
-                thread_done = [False] * args.threads
-                all_threads_done = False
 
     else:
         # load and compute matrices with non-cooler formats
@@ -327,6 +285,7 @@ def main(args=None):
             # print("args.chromosomes", args.chromosomes)
             
             _mat = hm.hiCMatrix(matrix)
+            print("Load done!")
             if args.chromosomes:
                 _mat.keepOnlyTheseChr(args.chromosomes)
             _mat.diagflat(0)
@@ -378,6 +337,7 @@ def main(args=None):
 
             hic_mat_list.append(_mat)
 
+    print("340")
     # remove nan bins
     rows_keep = cols_keep = np.delete(list(range(all_mat.shape[1])), all_nan)
     all_mat = all_mat[rows_keep, :][:, cols_keep]
